@@ -5,13 +5,14 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.tacz.guns.command.sub.*;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.server.permissions.Permissions;
 
 public class RootCommand {
     private static final String ROOT_NAME = "tacz";
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(ROOT_NAME)
-                .requires((source -> source.hasPermission(2)));
+                .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER));
         root.then(AttachmentLockCommand.get());
         root.then(DebugCommand.get());
         root.then(DummyAmmoCommand.get());

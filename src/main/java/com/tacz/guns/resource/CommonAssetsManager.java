@@ -1,8 +1,15 @@
 package com.tacz.guns.resource;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.mojang.serialization.JsonOps;
+import com.tacz.guns.GunMod;
 import com.tacz.guns.api.vmlib.LuaGunLogicConstant;
 import com.tacz.guns.api.vmlib.LuaLibrary;
 import com.tacz.guns.crafting.GunSmithTableIngredient;
@@ -28,32 +35,44 @@ import com.tacz.guns.resource.pojo.data.gun.Ignite;
 import com.tacz.guns.resource.pojo.data.loot.LootTableInjection;
 import com.tacz.guns.resource.serialize.*;
 import com.tacz.guns.util.AllowAttachmentTagMatcher;
+import com.tacz.guns.util.ItemStackData;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.packs.repository.PackRepository;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
+import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.event.AddReloadListenerEvent;
-import net.minecraftforge.event.OnDatapackSyncEvent;
-import net.minecraftforge.event.TagsUpdatedEvent;
-import net.minecraftforge.event.server.ServerStoppedEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.server.ServerLifecycleHooks;
+import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
+import net.neoforged.neoforge.event.OnDatapackSyncEvent;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 import org.luaj.vm2.LuaTable;
 
 import java.util.*;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
-@Mod.EventBusSubscriber
+@EventBusSubscriber
 public class CommonAssetsManager implements ICommonResourceProvider {
     private static CommonAssetsManager INSTANCE;
+    private static final RegistryAccess.Frozen BUILTIN_REGISTRIES = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
     public static final Gson GSON = new GsonBuilder()
-            .registerTypeAdapter(ResourceLocation.class, new ResourceLocation.Serializer())
+            .registerTypeAdapter(Identifier.class, new IdentifierSerializer())
             .registerTypeAdapter(Pair.class, new PairSerializer())
             .registerTypeAdapter(GunSmithTableIngredient.class, new GunSmithTableIngredientSerializer())
             .registerTypeAdapter(GunSmithTableResult.class, new GunSmithTableResultSerializer())
@@ -76,6 +95,7 @@ public class CommonAssetsManager implements ICommonResourceProvider {
     private CommonDataManager<CommonGunIndex> gunIndex;
     private CommonDataManager<CommonAttachmentIndex> attachmentIndex;
     private CommonDataManager<CommonBlockIndex> blockIndex;
+    private GunSmithTableRecipeDataManager recipeDataManager;
     private RecipeFilterManager recipeFilterManager;
     private LootInjectionManager lootInjectionManager;
 
@@ -83,28 +103,39 @@ public class CommonAssetsManager implements ICommonResourceProvider {
     List<LuaLibrary> libList = List.of(new LuaGunLogicConstant());
     private final ScriptManager scriptManager = new ScriptManager(new FileToIdConverter("scripts", ".lua"), libList);
 
-    public void reloadAndRegister(Consumer<PreparableReloadListener> register) {
+    public void reloadAndRegister(BiConsumer<Identifier, PreparableReloadListener> register) {
         // 这里会顺序重载，所以需要把index这种依赖data的放在后面
         gunData = register(new CommonDataManager<>(DataType.GUN_DATA, GunData.class, GSON, "data/guns", "GunDataLoader"));
         attachmentData = register(new AttachmentDataManager());
         attachmentsTagManager = register(new AttachmentsTagManager());
         recipeFilterManager = register(new RecipeFilterManager());
         lootInjectionManager = new LootInjectionManager();
-        register.accept(lootInjectionManager);
+        register.accept(reloadId("common/loot_injection"), lootInjectionManager);
         blockData = register(new CommonDataManager<>(DataType.BLOCK_DATA, BlockData.class, GSON, "data/blocks", "BlockDataLoader"));
-        register.accept(scriptManager);
+        register.accept(reloadId("common/scripts"), scriptManager);
 
         ammoIndex = register(new CommonDataManager<>(DataType.AMMO_INDEX, CommonAmmoIndex.class, GSON, "index/ammo", "AmmoIndexLoader"));
         gunIndex = register(new CommonDataManager<>(DataType.GUN_INDEX, CommonGunIndex.class, GSON, "index/guns", "GunIndexLoader"));
         attachmentIndex = register(new CommonDataManager<>(DataType.ATTACHMENT_INDEX, CommonAttachmentIndex.class, GSON, "index/attachments", "AttachmentIndexLoader"));
         blockIndex = register(new CommonDataManager<>(DataType.BLOCK_INDEX, CommonBlockIndex.class, GSON, "index/blocks", "BlockIndexLoader"));
+        recipeDataManager = register(new GunSmithTableRecipeDataManager());
 
-        listeners.forEach(register);
-        register.accept((barrier, resourceManager, preparationProfiler, reloadProfiler, backgroundExecutor, gameExecutor) -> {
-            return barrier
-                    .wait(Void.TYPE)
-                    .thenRunAsync(AllowAttachmentTagMatcher::resetCache, gameExecutor);
+        listeners.forEach(listener -> register.accept(reloadId("common/" + listener.getType().name().toLowerCase(Locale.ROOT)), listener));
+        register.accept(reloadId("common/allow_attachment_tag_reset"), new SimplePreparableReloadListener<Void>() {
+            @Override
+            protected Void prepare(ResourceManager manager, ProfilerFiller profiler) {
+                return null;
+            }
+
+            @Override
+            protected void apply(Void preparations, ResourceManager manager, ProfilerFiller profiler) {
+                AllowAttachmentTagMatcher.resetCache();
+            }
         });
+    }
+
+    private static Identifier reloadId(String path) {
+        return Identifier.fromNamespaceAndPath(GunMod.MOD_ID, path);
     }
 
     private <T extends INetworkCacheReloadListener> T register(T listener) {
@@ -112,39 +143,123 @@ public class CommonAssetsManager implements ICommonResourceProvider {
         return listener;
     }
 
-    public Map<DataType, Map<ResourceLocation, String>> getNetworkCache() {
-        ImmutableMap.Builder<DataType, Map<ResourceLocation, String>> builder = ImmutableMap.builder();
+    public Map<DataType, Map<Identifier, String>> getNetworkCache() {
+        ImmutableMap.Builder<DataType, Map<Identifier, String>> builder = ImmutableMap.builder();
+        Set<DataType> addedTypes = EnumSet.noneOf(DataType.class);
         for (INetworkCacheReloadListener listener : listeners) {
-            builder.put(listener.getType(), listener.getNetworkCache());
+            Map<Identifier, String> networkCache = listener.getNetworkCache();
+            if (listener.getType() == DataType.RECIPES) {
+                networkCache = selectRecipeNetworkCache(networkCache);
+            }
+            if (networkCache != null) {
+                builder.put(listener.getType(), networkCache);
+                addedTypes.add(listener.getType());
+            }
+        }
+        Map<Identifier, String> recipes = addedTypes.contains(DataType.RECIPES) ? Map.of() : getRecipeNetworkCache();
+        if (!recipes.isEmpty() && !addedTypes.contains(DataType.RECIPES)) {
+            builder.put(DataType.RECIPES, recipes);
         }
         return builder.build();
     }
 
+    private Map<Identifier, String> selectRecipeNetworkCache(@Nullable Map<Identifier, String> managerCache) {
+        Map<Identifier, String> fallbackCache = getRecipeNetworkCache();
+        if (managerCache == null || managerCache.isEmpty()) {
+            return fallbackCache;
+        }
+        if (fallbackCache.size() > managerCache.size()) {
+            GunMod.LOGGER.warn("Using RecipeManager gun smith table recipe fallback because it has more recipes: manager={} fallback={}",
+                    managerCache.size(), fallbackCache.size());
+            return fallbackCache;
+        }
+        return managerCache;
+    }
+
+    private Map<Identifier, String> getRecipeNetworkCache() {
+        if (recipeManager == null) {
+            return Map.of();
+        }
+        Map<Identifier, String> recipes = new LinkedHashMap<>();
+        recipeManager.getRecipes().stream()
+                .filter(holder -> holder.value().getType() == ModRecipe.GUN_SMITH_TABLE_CRAFTING.get())
+                .forEach(holder -> {
+                    Identifier id = holder.id().identifier();
+                    try {
+                        GunSmithTableRecipe recipe = (GunSmithTableRecipe) holder.value();
+                        recipe.init();
+                        recipes.put(id, GSON.toJson(toNetworkRecipeJson(recipe)));
+                    } catch (RuntimeException exception) {
+                        GunMod.LOGGER.warn("Failed to serialize gun smith table recipe {} for client sync", id, exception);
+                    }
+                });
+        return recipes;
+    }
+
+    private static JsonObject toNetworkRecipeJson(GunSmithTableRecipe recipe) {
+        JsonObject root = new JsonObject();
+        JsonArray materials = new JsonArray();
+        for (GunSmithTableIngredient ingredient : recipe.getInputs()) {
+            JsonObject material = new JsonObject();
+            JsonElement item = Ingredient.CODEC.encodeStart(
+                    BUILTIN_REGISTRIES.createSerializationContext(JsonOps.INSTANCE),
+                    ingredient.getIngredient()
+            ).getOrThrow(IllegalArgumentException::new);
+            material.add("item", item);
+            material.addProperty("count", ingredient.getCount());
+            materials.add(material);
+        }
+        root.add("materials", materials);
+        root.add("result", toNetworkResultJson(recipe.getResult()));
+        return root;
+    }
+
+    private static JsonObject toNetworkResultJson(GunSmithTableResult result) {
+        JsonObject resultJson = new JsonObject();
+        resultJson.addProperty("type", GunSmithTableResult.CUSTOM);
+        resultJson.add("item", toNetworkItemStackJson(result.getResult()));
+        resultJson.addProperty("group", result.getGroup().toString());
+        return resultJson;
+    }
+
+    private static JsonObject toNetworkItemStackJson(ItemStack stack) {
+        JsonObject itemJson = new JsonObject();
+        itemJson.addProperty("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        if (stack.getCount() != 1) {
+            itemJson.addProperty("count", stack.getCount());
+        }
+        CompoundTag customData = ItemStackData.copyCustomData(stack);
+        if (!customData.isEmpty()) {
+            itemJson.addProperty("nbt", customData.toString());
+        }
+        return itemJson;
+    }
+
     @Nullable
     @Override
-    public GunData getGunData(ResourceLocation id) {
+    public GunData getGunData(Identifier id) {
         return gunData.getData(id);
     }
 
     @Nullable
     @Override
-    public AttachmentData getAttachmentData(ResourceLocation id) {
+    public AttachmentData getAttachmentData(Identifier id) {
         return attachmentData.getData(id);
     }
 
     @Nullable
     @Override
-    public BlockData getBlockData(ResourceLocation id) {
+    public BlockData getBlockData(Identifier id) {
         return blockData.getData(id);
     }
 
     @Override
     @Nullable
-    public RecipeFilter getRecipeFilter(ResourceLocation id) {
+    public RecipeFilter getRecipeFilter(Identifier id) {
         return recipeFilterManager.getFilter(id);
     }
 
-    public List<LootTableInjection> getLootTableInjections(ResourceLocation lootTable) {
+    public List<LootTableInjection> getLootTableInjections(Identifier lootTable) {
         if (lootInjectionManager == null) {
             return List.of();
         }
@@ -153,60 +268,60 @@ public class CommonAssetsManager implements ICommonResourceProvider {
 
     @Nullable
     @Override
-    public CommonGunIndex getGunIndex(ResourceLocation gunId) {
+    public CommonGunIndex getGunIndex(Identifier gunId) {
         return gunIndex.getData(gunId);
     }
 
     @Override
-    public Set<Map.Entry<ResourceLocation, CommonGunIndex>> getAllGuns() {
+    public Set<Map.Entry<Identifier, CommonGunIndex>> getAllGuns() {
         return gunIndex.getAllData().entrySet();
     }
 
     @Nullable
     @Override
-    public CommonAmmoIndex getAmmoIndex(ResourceLocation ammoId) {
+    public CommonAmmoIndex getAmmoIndex(Identifier ammoId) {
         return ammoIndex.getData(ammoId);
     }
 
     @Override
-    public Set<Map.Entry<ResourceLocation, CommonAmmoIndex>> getAllAmmos() {
+    public Set<Map.Entry<Identifier, CommonAmmoIndex>> getAllAmmos() {
         return ammoIndex.getAllData().entrySet();
     }
 
     @Nullable
     @Override
-    public CommonAttachmentIndex getAttachmentIndex(ResourceLocation attachmentId) {
+    public CommonAttachmentIndex getAttachmentIndex(Identifier attachmentId) {
         return attachmentIndex.getData(attachmentId);
     }
 
     @Override
-    public Set<Map.Entry<ResourceLocation, CommonAttachmentIndex>> getAllAttachments() {
+    public Set<Map.Entry<Identifier, CommonAttachmentIndex>> getAllAttachments() {
         return attachmentIndex.getAllData().entrySet();
     }
 
     @Override
-    public LuaTable getScript(ResourceLocation scriptId) {
+    public LuaTable getScript(Identifier scriptId) {
         return scriptManager.getScript(scriptId);
     }
 
     @Nullable
     @Override
-    public CommonBlockIndex getBlockIndex(ResourceLocation blockId) {
+    public CommonBlockIndex getBlockIndex(Identifier blockId) {
         return blockIndex.getData(blockId);
     }
 
     @Override
-    public Set<Map.Entry<ResourceLocation, CommonBlockIndex>> getAllBlocks() {
+    public Set<Map.Entry<Identifier, CommonBlockIndex>> getAllBlocks() {
         return blockIndex.getAllData().entrySet();
     }
 
     @Override
-    public Set<String> getAttachmentTags(ResourceLocation registryName) {
+    public Set<String> getAttachmentTags(Identifier registryName) {
         return attachmentsTagManager.getAttachmentTags(registryName);
     }
 
     @Override
-    public Set<String> getAllowAttachmentTags(ResourceLocation registryName) {
+    public Set<String> getAllowAttachmentTags(Identifier registryName) {
         return attachmentsTagManager.getAllowAttachmentTags(registryName);
     }
 
@@ -236,7 +351,7 @@ public class CommonAssetsManager implements ICommonResourceProvider {
     }
 
     @SubscribeEvent
-    public static void onReload(AddReloadListenerEvent event) {
+    public static void onReload(AddServerReloadListenersEvent event) {
         var commonAssetsManager = new CommonAssetsManager();
         commonAssetsManager.reloadAndRegister(event::addListener);
         INSTANCE = commonAssetsManager;
@@ -254,7 +369,11 @@ public class CommonAssetsManager implements ICommonResourceProvider {
     public static void onReload(TagsUpdatedEvent event) {
         if (event.getUpdateCause() == TagsUpdatedEvent.UpdateCause.SERVER_DATA_LOAD){
             if (getInstance() !=null && getInstance().recipeManager != null) {
-                List<GunSmithTableRecipe> recipes = getInstance().recipeManager.getAllRecipesFor(ModRecipe.GUN_SMITH_TABLE_CRAFTING.get());
+                List<GunSmithTableRecipe> recipes = getInstance().recipeManager.getRecipes().stream()
+                        .map(RecipeHolder::value)
+                        .filter(recipe -> recipe.getType() == ModRecipe.GUN_SMITH_TABLE_CRAFTING.get())
+                        .map(recipe -> (GunSmithTableRecipe) recipe)
+                        .toList();
                 for (GunSmithTableRecipe recipe : recipes) {
                     recipe.init();
                 }
@@ -273,12 +392,35 @@ public class CommonAssetsManager implements ICommonResourceProvider {
         if (getInstance() == null) {
             return;
         }
-        ServerMessageSyncGunPack message = new ServerMessageSyncGunPack(getInstance().getNetworkCache());
+        Map<DataType, Map<Identifier, String>> networkCache = getInstance().getNetworkCache();
+        logDatapackSyncCache(event, networkCache);
+        ServerMessageSyncGunPack message = new ServerMessageSyncGunPack(networkCache);
         if (event.getPlayer() != null) {
             NetworkHandler.sendToClientPlayer(message, event.getPlayer());
         } else {
             event.getPlayerList().getPlayers().forEach(player -> NetworkHandler.sendToClientPlayer(message, player));
         }
+    }
+
+    private static void logDatapackSyncCache(OnDatapackSyncEvent event, Map<DataType, Map<Identifier, String>> cache) {
+        String target = event.getPlayer() != null
+                ? event.getPlayer().getName().getString()
+                : "all players: " + event.getPlayerList().getPlayers().size();
+        int recipes = countNetworkCache(cache, DataType.RECIPES);
+        int blocks = countNetworkCache(cache, DataType.BLOCK_INDEX);
+        GunMod.LOGGER.info("TACZ datapack sync to {}: types={} recipes={} blockIndex={} gunIndex={} ammoIndex={} attachmentIndex={}",
+                target, cache.size(), recipes, blocks,
+                countNetworkCache(cache, DataType.GUN_INDEX),
+                countNetworkCache(cache, DataType.AMMO_INDEX),
+                countNetworkCache(cache, DataType.ATTACHMENT_INDEX));
+        if (recipes == 0 || blocks == 0) {
+            GunMod.LOGGER.warn("TACZ datapack sync has incomplete gun smith cache: recipes={} blockIndex={}", recipes, blocks);
+        }
+    }
+
+    private static int countNetworkCache(Map<DataType, Map<Identifier, String>> cache, DataType type) {
+        Map<Identifier, String> values = cache.get(type);
+        return values == null ? 0 : values.size();
     }
 
     public static void reloadAllPack() {
@@ -293,5 +435,3 @@ public class CommonAssetsManager implements ICommonResourceProvider {
         server.reloadResources(collection);
     }
 }
-
-

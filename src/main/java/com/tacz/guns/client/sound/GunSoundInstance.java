@@ -7,7 +7,7 @@ import net.minecraft.client.resources.sounds.Sound;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.client.sounds.WeighedSoundEvents;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
@@ -19,16 +19,16 @@ public class GunSoundInstance extends AbstractSoundInstance {
     private static final FileToIdConverter TACZ_SOUND_LISTER = new FileToIdConverter("tacz_sounds", ".ogg");
 
     @Nullable
-    private final ResourceLocation registryName;
+    private final Identifier registryName;
     private final boolean canPlay;
     @Nullable
     private Sound redirectedSound;
 
-    public GunSoundInstance(SoundEvent soundEvent, SoundSource source, float volume, float pitch, Entity entity, int soundDistance, ResourceLocation registryName, boolean mono) {
+    public GunSoundInstance(SoundEvent soundEvent, SoundSource source, float volume, float pitch, Entity entity, int soundDistance, Identifier registryName, boolean mono) {
         this(soundEvent, source, volume, pitch, entity, soundDistance, registryName, mono, false);
     }
 
-    public GunSoundInstance(SoundEvent soundEvent, SoundSource source, float volume, float pitch, Entity entity, int soundDistance, ResourceLocation registryName, boolean mono, boolean relative) {
+    public GunSoundInstance(SoundEvent soundEvent, SoundSource source, float volume, float pitch, Entity entity, int soundDistance, Identifier registryName, boolean mono, boolean relative) {
         super(soundEvent, source, RandomSource.create(943));
         this.attenuation = Attenuation.NONE;
         this.relative = relative;
@@ -56,7 +56,7 @@ public class GunSoundInstance extends AbstractSoundInstance {
     }
 
     @Nullable
-    public ResourceLocation getRegistryName() {
+    public Identifier getRegistryName() {
         return registryName;
     }
 
@@ -78,23 +78,23 @@ public class GunSoundInstance extends AbstractSoundInstance {
     }
 
     private static class TaczSound extends Sound {
-        private final ResourceLocation location;
-        private final ResourceLocation path;
+        private final Identifier location;
+        private final Identifier path;
 
-        private TaczSound(ResourceLocation location, ResourceLocation path, Sound template) {
-            super(location.toString(), template.getVolume(), template.getPitch(), template.getWeight(), Type.FILE,
+        private TaczSound(Identifier location, Identifier path, Sound template) {
+            super(location, template.getVolume(), template.getPitch(), template.getWeight(), Type.FILE,
                     template.shouldStream(), false, template.getAttenuationDistance());
             this.location = location;
             this.path = path;
         }
 
         @Override
-        public ResourceLocation getLocation() {
+        public Identifier getLocation() {
             return location;
         }
 
         @Override
-        public ResourceLocation getPath() {
+        public Identifier getPath() {
             return path;
         }
     }

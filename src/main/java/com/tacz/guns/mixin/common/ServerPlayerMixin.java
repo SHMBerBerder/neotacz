@@ -7,9 +7,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ServerPlayer.class)
+@Mixin(value = ServerPlayer.class, remap = false)
 public class ServerPlayerMixin {
-    @Inject(method = "restoreFrom", at = @At("RETURN"))
+    @Inject(method = "restoreFrom", at = @At("RETURN"), remap = false)
     public void initialGunOperateData(ServerPlayer pThat, boolean pKeepEverything, CallbackInfo ci) {
         ServerPlayer player = (ServerPlayer) (Object) this;
         IGunOperator.fromLivingEntity(player).initialData();

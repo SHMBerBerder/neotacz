@@ -1,21 +1,20 @@
 package com.tacz.guns.client.gui.toast;
 
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.toasts.Toast;
-import net.minecraft.client.gui.components.toasts.ToastComponent;
+import net.minecraft.client.gui.components.toasts.ToastManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
 
-@OnlyIn(Dist.CLIENT)
 public class GunLevelUpToast implements Toast {
     private final Component title;
     private final Component subTitle;
     private final ItemStack icon;
+    private Visibility wantedVisibility = Visibility.SHOW;
 
     public GunLevelUpToast(ItemStack icon, Component titleComponent, @Nullable Component subtitle) {
         this.icon = icon;
@@ -23,9 +22,18 @@ public class GunLevelUpToast implements Toast {
         this.subTitle = subtitle;
     }
 
-    @NotNull
     @Override
-    public Visibility render(@NotNull GuiGraphics gui, ToastComponent toastComponent, long timeSinceLastVisible) {
+    public Visibility getWantedVisibility() {
+        return wantedVisibility;
+    }
+
+    @Override
+    public void update(@NotNull ToastManager manager, long fullyVisibleForMs) {
+        this.wantedVisibility = fullyVisibleForMs >= 5000L ? Visibility.HIDE : Visibility.SHOW;
+    }
+
+    @Override
+    public void extractRenderState(@NotNull GuiGraphicsExtractor gui, @NotNull Font font, long fullyVisibleForMs) {
         // todo 这个类没有实际使用，先不管了
 //        RenderSystem.setShader(GameRenderer::getPositionTexShader);
 //        RenderSystem.setShaderTexture(0, TEXTURE);
@@ -58,6 +66,10 @@ public class GunLevelUpToast implements Toast {
 //            }
 //        }
 //        toastComponent.getMinecraft().getItemRenderer().renderAndDecorateFakeItem(this.icon, 8, 8);
-        return timeSinceLastVisible >= 5000L ? Visibility.HIDE : Visibility.SHOW;
+        gui.item(this.icon, 8, 8);
+        gui.text(font, this.title, 30, this.subTitle == null ? 12 : 7, 0xFFFFFF00, false);
+        if (this.subTitle != null) {
+            gui.text(font, this.subTitle, 30, 18, 0xFFFFFFFF, false);
+        }
     }
 }

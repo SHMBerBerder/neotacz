@@ -8,10 +8,9 @@ import com.tacz.guns.resource.CommonAssetsManager;
 import com.tacz.guns.resource.pojo.data.block.TabConfig;
 import com.tacz.guns.resource.pojo.data.recipe.GunResult;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.common.crafting.CraftingHelper;
 
 import java.lang.reflect.Type;
 
@@ -25,19 +24,19 @@ public class GunSmithTableResultSerializer implements JsonDeserializer<GunSmithT
             String typeName = GsonHelper.getAsString(jsonObject, "type");
             int count = 1;
             CompoundTag extraTag = null;
-            ResourceLocation tabOverride = null;
+            Identifier tabOverride = null;
             if (jsonObject.has("count")) {
                 count = Math.max(GsonHelper.getAsInt(jsonObject, "count"), 1);
             }
             if (jsonObject.has("nbt")) {
-                extraTag = CraftingHelper.getNBT(jsonObject.get("nbt"));
+                extraTag = ItemStackJsonHelper.getNbt(jsonObject.get("nbt"));
             }
             if (jsonObject.has("group")) {
                 String raw = GsonHelper.getAsString(jsonObject, "group");
                 if (!raw.contains(":")) {
                     raw = GunMod.MOD_ID + ":" + raw;
                 }
-                tabOverride = ResourceLocation.tryParse(raw);
+                tabOverride = Identifier.tryParse(raw);
             }
 
             GunSmithTableResult result;
@@ -58,7 +57,7 @@ public class GunSmithTableResultSerializer implements JsonDeserializer<GunSmithT
                 }
                 case GunSmithTableResult.CUSTOM -> {
                     JsonObject resultObject = GsonHelper.getAsJsonObject(jsonObject, "item");
-                    ItemStack itemStack = CraftingHelper.getItemStack(resultObject, true);
+                    ItemStack itemStack = ItemStackJsonHelper.getItemStack(resultObject, true);
                     result = new GunSmithTableResult(itemStack, tabOverride);
                 }
                 default -> {
@@ -70,7 +69,7 @@ public class GunSmithTableResultSerializer implements JsonDeserializer<GunSmithT
         return new GunSmithTableResult(ItemStack.EMPTY, TabConfig.TAB_EMPTY);
     }
 
-    private ResourceLocation getId(JsonObject jsonObject) {
-        return new ResourceLocation(GsonHelper.getAsString(jsonObject, "id"));
+    private Identifier getId(JsonObject jsonObject) {
+        return Identifier.parse(GsonHelper.getAsString(jsonObject, "id"));
     }
 }

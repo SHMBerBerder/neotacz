@@ -7,7 +7,7 @@ import com.tacz.guns.api.client.event.SwapItemWithOffHand;
 import dev.latvian.mods.kubejs.event.EventHandler;
 import dev.latvian.mods.kubejs.script.ScriptType;
 import dev.latvian.mods.kubejs.script.ScriptTypePredicate;
-import net.minecraftforge.eventbus.api.Event;
+import net.neoforged.bus.api.Event;
 
 import java.util.HashMap;
 import java.util.Map;

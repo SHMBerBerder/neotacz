@@ -1,14 +1,16 @@
 package com.tacz.guns.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.config.common.GunConfig;
 import com.tacz.guns.item.ModernKineticGunScriptAPI;
 import com.tacz.guns.resource.pojo.data.gun.FeedType;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
 
-@Mod.EventBusSubscriber
+@EventBusSubscriber
 public class PlayerRespawnEvent {
     @SubscribeEvent
     public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
@@ -16,7 +18,7 @@ public class PlayerRespawnEvent {
         if (!GunConfig.AUTO_RELOAD_WHEN_RESPAWN.get()) return;
 
         var player = event.getEntity();
-        player.getInventory().items.forEach(itemStack -> {
+        player.getInventory().getNonEquipmentItems().forEach(itemStack -> {
             if (!(itemStack.getItem() instanceof IGun)) return;
 
             var api = new ModernKineticGunScriptAPI();

@@ -1,23 +1,23 @@
 package com.tacz.guns.network.message;
 
 import com.tacz.guns.api.DefaultAssets;
-import com.tacz.guns.client.sound.SoundPlayManager;
+import com.tacz.guns.network.NetworkHandler;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.network.NetworkEvent;
+import net.minecraft.resources.Identifier;
+import com.tacz.guns.network.NetworkContext;
 
 import java.util.function.Supplier;
 
 public class ServerMessageSound {
     private final int entityId;
-    private final ResourceLocation gunId;
-    private final ResourceLocation gunDisplayId;
+    private final Identifier gunId;
+    private final Identifier gunDisplayId;
     private final String soundName;
     private final float volume;
     private final float pitch;
     private final int distance;
 
-    public ServerMessageSound(int entityId, ResourceLocation gunId, ResourceLocation gunDisplayId, String soundName, float volume, float pitch, int distance) {
+    public ServerMessageSound(int entityId, Identifier gunId, Identifier gunDisplayId, String soundName, float volume, float pitch, int distance) {
         this.entityId = entityId;
         this.gunId = gunId;
         this.gunDisplayId = gunDisplayId;
@@ -27,14 +27,14 @@ public class ServerMessageSound {
         this.distance = distance;
     }
 
-    public ServerMessageSound(int entityId, ResourceLocation gunId, String soundName, float volume, float pitch, int distance) {
+    public ServerMessageSound(int entityId, Identifier gunId, String soundName, float volume, float pitch, int distance) {
         this(entityId, gunId, DefaultAssets.DEFAULT_GUN_DISPLAY_ID, soundName, volume, pitch, distance);
     }
 
     public static void encode(ServerMessageSound message, FriendlyByteBuf buf) {
         buf.writeVarInt(message.entityId);
-        buf.writeResourceLocation(message.gunId);
-        buf.writeResourceLocation(message.gunDisplayId);
+        buf.writeIdentifier(message.gunId);
+        buf.writeIdentifier(message.gunDisplayId);
         buf.writeUtf(message.soundName);
         buf.writeFloat(message.volume);
         buf.writeFloat(message.pitch);
@@ -43,8 +43,8 @@ public class ServerMessageSound {
 
     public static ServerMessageSound decode(FriendlyByteBuf buf) {
         int entityId = buf.readVarInt();
-        ResourceLocation gunId = buf.readResourceLocation();
-        ResourceLocation gunDisplayId = buf.readResourceLocation();
+        Identifier gunId = buf.readIdentifier();
+        Identifier gunDisplayId = buf.readIdentifier();
         String soundName = buf.readUtf();
         float volume = buf.readFloat();
         float pitch = buf.readFloat();
@@ -52,23 +52,19 @@ public class ServerMessageSound {
         return new ServerMessageSound(entityId, gunId, gunDisplayId, soundName, volume, pitch, distance);
     }
 
-    public static void handle(ServerMessageSound message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
-        if (context.getDirection().getReceptionSide().isClient()) {
-            context.enqueueWork(() -> SoundPlayManager.playMessageSound(message));
-        }
-        context.setPacketHandled(true);
+    public static void handle(ServerMessageSound message, Supplier<NetworkContext> contextSupplier) {
+        NetworkHandler.handleClientboundMessage(message, contextSupplier);
     }
 
     public int getEntityId() {
         return entityId;
     }
 
-    public ResourceLocation getGunId() {
+    public Identifier getGunId() {
         return gunId;
     }
 
-    public ResourceLocation getGunDisplayId() {
+    public Identifier getGunDisplayId() {
         return gunDisplayId;
     }
 

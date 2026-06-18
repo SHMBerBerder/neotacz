@@ -3,12 +3,10 @@ package com.tacz.guns.client.tooltip;
 import com.tacz.guns.api.item.IAmmoBox;
 import com.tacz.guns.inventory.tooltip.AmmoBoxTooltip;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
-import org.joml.Matrix4f;
 
 public class ClientAmmoBoxTooltip implements ClientTooltipComponent {
     private final ItemStack ammo;
@@ -27,7 +25,7 @@ public class ClientAmmoBoxTooltip implements ClientTooltipComponent {
     }
 
     @Override
-    public int getHeight() {
+    public int getHeight(Font font) {
         return 28;
     }
 
@@ -37,13 +35,17 @@ public class ClientAmmoBoxTooltip implements ClientTooltipComponent {
     }
 
     @Override
-    public void renderText(Font font, int pX, int pY, Matrix4f matrix4f, MultiBufferSource.BufferSource bufferSource) {
-        font.drawInBatch(ammoName, pX + 20, pY + 4, 0xffaa00, false, matrix4f, bufferSource, Font.DisplayMode.NORMAL, 0, 0xF000F0);
-        font.drawInBatch(count, pX + 20, pY + 15, 0x666666, false, matrix4f, bufferSource, Font.DisplayMode.NORMAL, 0, 0xF000F0);
+    public void extractText(GuiGraphicsExtractor graphics, Font font, int pX, int pY) {
+        drawText(graphics, font, pX, pY);
+    }
+
+    private void drawText(GuiGraphicsExtractor graphics, Font font, int pX, int pY) {
+        graphics.text(font, ammoName, pX + 20, pY + 4, 0xffaa00, false);
+        graphics.text(font, count, pX + 20, pY + 15, 0x666666, false);
     }
 
     @Override
-    public void renderImage(Font pFont, int pX, int pY, GuiGraphics pGuiGraphics) {
-        pGuiGraphics.renderItem(ammo, pX, pY + 5);
+    public void extractImage(Font pFont, int pX, int pY, int width, int height, GuiGraphicsExtractor graphics) {
+        TooltipIconRenderer.drawSlotIcon(graphics, ammo, pX, pY + 5);
     }
 }

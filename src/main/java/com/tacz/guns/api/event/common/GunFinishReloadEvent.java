@@ -1,13 +1,14 @@
 package com.tacz.guns.api.event.common;
 
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.eventbus.api.Event;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.bus.api.Event;
+import net.neoforged.bus.api.ICancellableEvent;
+import net.neoforged.fml.LogicalSide;
 
 /**
  * 生物结束更换枪械弹药时触发的事件。
  */
-public class GunFinishReloadEvent extends Event implements KubeJSGunEventPoster<GunFinishReloadEvent>{
+public class GunFinishReloadEvent extends Event implements KubeJSGunEventPoster<GunFinishReloadEvent>, ICancellableEvent {
     private final ItemStack gunItemStack;
     private final LogicalSide logicalSide;
 
@@ -15,11 +16,6 @@ public class GunFinishReloadEvent extends Event implements KubeJSGunEventPoster<
         this.gunItemStack = gunItemStack;
         this.logicalSide = side;
         postEventToKubeJS(this);
-    }
-
-    @Override
-    public boolean isCancelable() {
-        return true;
     }
 
     public ItemStack getGunItemStack() {

@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @SuppressWarnings("ALL")
-@Mixin(LocalPlayer.class)
+@Mixin(value = LocalPlayer.class, remap = false)
 public abstract class LocalPlayerMixin implements IClientPlayerGunOperator {
     private final @Unique LocalPlayer tac$player = (LocalPlayer) (Object) this;
     private final @Unique LocalPlayerDataHolder tac$data = new LocalPlayerDataHolder(tac$player);
@@ -102,7 +102,7 @@ public abstract class LocalPlayerMixin implements IClientPlayerGunOperator {
         return tac$shoot.getClientShootCoolDown();
     }
 
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = "tick", at = @At("HEAD"), remap = false)
     public void onTickClientSide(CallbackInfo ci) {
         LocalPlayer player = (LocalPlayer) (Object) this;
         if (player.level().isClientSide()) {
@@ -114,7 +114,7 @@ public abstract class LocalPlayerMixin implements IClientPlayerGunOperator {
         }
     }
 
-    @WrapOperation(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;setSprinting(Z)V"))
+    @WrapOperation(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;setSprinting(Z)V", remap = false), remap = false)
     public void swapSprintStatus(LocalPlayer player, boolean sprinting, Operation<Void> original) {
         if (sprinting) { // 用原始的输入尝试打断换弹
             tac$reload.cancelReload();
@@ -122,7 +122,7 @@ public abstract class LocalPlayerMixin implements IClientPlayerGunOperator {
         original.call(player, tac$sprint.getProcessedSprintStatus(sprinting));
     }
 
-    @Inject(method = "respawn", at = @At("RETURN"))
+    @Inject(method = "respawn", at = @At("RETURN"), remap = false)
     public void onRespawn(CallbackInfo ci) {
         tac$data.reset();
         draw(ItemStack.EMPTY);

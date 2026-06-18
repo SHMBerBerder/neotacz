@@ -8,10 +8,11 @@ import me.shedaniel.clothconfig2.api.ConfigBuilder;
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraftforge.client.ConfigScreenHandler;
-import net.minecraftforge.fml.ModLoadingContext;
+import net.neoforged.fml.ModLoadingContext;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
 import javax.annotation.Nullable;
+import java.util.function.Supplier;
 
 public class MenuIntegration {
     public static ConfigBuilder getConfigBuilder() {
@@ -34,8 +35,8 @@ public class MenuIntegration {
     }
 
     public static void registerModsPage() {
-        ModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class, () ->
-                new ConfigScreenHandler.ConfigScreenFactory((client, parent) -> getConfigScreen(parent)));
+        Supplier<IConfigScreenFactory> factory = () -> (container, parent) -> getConfigScreen(parent);
+        ModLoadingContext.get().getActiveContainer().registerExtensionPoint(IConfigScreenFactory.class, factory);
     }
 
     public static Screen getConfigScreen(@Nullable Screen parent) {

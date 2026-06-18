@@ -1,5 +1,7 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.common.EntityKillByGunEvent;
@@ -10,15 +12,15 @@ import com.tacz.guns.entity.TargetMinecart;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.LogicalSide;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.LogicalSide;
+import net.neoforged.fml.common.Mod;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT)
+@EventBusSubscriber(value = Dist.CLIENT)
 public class ClientHitMark {
     public static long lastHitTimestamp = 0;
     public static float damageAmount = 0;
@@ -32,8 +34,8 @@ public class ClientHitMark {
         LocalPlayer player = Minecraft.getInstance().player;
         Entity hurtEntity = event.getHurtEntity();
         if (player != null && player.equals(attacker) && hurtEntity!=null) {
-            ResourceLocation gunId = event.getGunId();
-            ResourceLocation gunDisplayId = event.getGunDisplayId();
+            Identifier gunId = event.getGunId();
+            Identifier gunDisplayId = event.getGunDisplayId();
             RenderCrosshairEvent.markHitTimestamp();
             if (event.isHeadShot()) {
                 RenderCrosshairEvent.markHeadShotTimestamp();
@@ -49,7 +51,7 @@ public class ClientHitMark {
                     damageAmount = event.getAmount();
                 }
                 float distance = player.distanceTo(event.getHurtEntity());
-                player.displayClientMessage(Component.translatable("message.tacz.target_minecart.hit", String.format("%.1f", damageAmount), String.format("%.2f", distance)), true);
+                player.sendOverlayMessage(Component.translatable("message.tacz.target_minecart.hit", String.format("%.1f", damageAmount), String.format("%.2f", distance)));
 
                 lastHitTimestamp = System.currentTimeMillis();
             }

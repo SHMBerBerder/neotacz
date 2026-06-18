@@ -6,7 +6,7 @@ import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.api.item.gun.FireMode;
 import com.tacz.guns.item.AttachmentItem;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nonnull;
@@ -18,7 +18,7 @@ public class GunNbtFactory extends TimelessItemNbtFactory<AbstractGunItem, GunNb
     private int ammoCount = 0;
     private FireMode fireMode = FireMode.UNKNOWN;
     private boolean bulletInBarrel = false;
-    private EnumMap<AttachmentType, ResourceLocation> attachments = Maps.newEnumMap(AttachmentType.class);
+    private EnumMap<AttachmentType, Identifier> attachments = Maps.newEnumMap(AttachmentType.class);
 
     public GunNbtFactory(@Nonnull AbstractGunItem item) {
         super(item);
@@ -43,12 +43,12 @@ public class GunNbtFactory extends TimelessItemNbtFactory<AbstractGunItem, GunNb
         return this;
     }
 
-    public GunNbtFactory putAttachment(AttachmentType type, ResourceLocation attachmentId) {
+    public GunNbtFactory putAttachment(AttachmentType type, Identifier attachmentId) {
         this.attachments.put(type, attachmentId);
         return this;
     }
 
-    public GunNbtFactory putAllAttachment(EnumMap<AttachmentType, ResourceLocation> attachments) {
+    public GunNbtFactory putAllAttachment(EnumMap<AttachmentType, Identifier> attachments) {
         this.attachments = attachments;
         return this;
     }

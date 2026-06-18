@@ -1,5 +1,6 @@
 package com.tacz.guns.entity.shooter;
 
+import com.tacz.guns.GunMod;
 import com.tacz.guns.api.entity.IGunOperator;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.config.sync.SyncConfig;
@@ -11,12 +12,11 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
-
-import java.util.UUID;
+import net.minecraft.resources.Identifier;
 
 public class LivingEntitySpeedModifier {
-    private static final UUID EXTRA_SPEED_MODIFIER_UUID = UUID.fromString("4D5696AE-A7C5-C59C-80E9-2A2DC8373C46");
-    private static final UUID WEIGHT_SPEED_MODIFIER_UUID = UUID.fromString("2CB6F5AD-C6D2-9D29-4E84-0856ACD47CDB");
+    private static final Identifier EXTRA_SPEED_MODIFIER_ID = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "extra_speed_modifier");
+    private static final Identifier WEIGHT_SPEED_MODIFIER_ID = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "weight_speed_modifier");
     private final LivingEntity shooter;
     private final ShooterDataHolder dataHolder;
     public LivingEntitySpeedModifier(LivingEntity shooter, ShooterDataHolder dataHolder) {
@@ -39,28 +39,28 @@ public class LivingEntitySpeedModifier {
                 if(weightFactor > 0){
                     float targetSpeed = cacheProperty.getCache(WeightModifier.ID);
                     targetSpeed *= (float) -weightFactor;
-                    AttributeModifier currentModifier = speedModifier.getModifier(WEIGHT_SPEED_MODIFIER_UUID);
-                    if (currentModifier == null || currentModifier.getAmount() != targetSpeed) {
-                        speedModifier.removeModifier(WEIGHT_SPEED_MODIFIER_UUID);
-                        speedModifier.addTransientModifier(new AttributeModifier(WEIGHT_SPEED_MODIFIER_UUID, "Gun Speed Modifier",
-                                targetSpeed, AttributeModifier.Operation.MULTIPLY_BASE));
+                    AttributeModifier currentModifier = speedModifier.getModifier(WEIGHT_SPEED_MODIFIER_ID);
+                    if (currentModifier == null || currentModifier.amount() != targetSpeed) {
+                        speedModifier.removeModifier(WEIGHT_SPEED_MODIFIER_ID);
+                        speedModifier.addTransientModifier(new AttributeModifier(WEIGHT_SPEED_MODIFIER_ID,
+                                targetSpeed, AttributeModifier.Operation.ADD_MULTIPLIED_BASE));
                     }
                 }
 
                 MoveSpeed speed = cacheProperty.getCache(ExtraMovementModifier.ID);
                 if (speed != null) {
                     double targetSpeed = getTargetSpeed(speed);
-                    AttributeModifier currentModifier = speedModifier.getModifier(EXTRA_SPEED_MODIFIER_UUID);
-                    if (currentModifier == null || currentModifier.getAmount() != targetSpeed) {
-                        speedModifier.removeModifier(EXTRA_SPEED_MODIFIER_UUID);
-                        speedModifier.addTransientModifier(new AttributeModifier(EXTRA_SPEED_MODIFIER_UUID, "Extra Gun Speed Modifier",
-                                targetSpeed, AttributeModifier.Operation.MULTIPLY_TOTAL));
+                    AttributeModifier currentModifier = speedModifier.getModifier(EXTRA_SPEED_MODIFIER_ID);
+                    if (currentModifier == null || currentModifier.amount() != targetSpeed) {
+                        speedModifier.removeModifier(EXTRA_SPEED_MODIFIER_ID);
+                        speedModifier.addTransientModifier(new AttributeModifier(EXTRA_SPEED_MODIFIER_ID,
+                                targetSpeed, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
                     }
                 }
             }
         } else {
-            speedModifier.removeModifier(WEIGHT_SPEED_MODIFIER_UUID);
-            speedModifier.removeModifier(EXTRA_SPEED_MODIFIER_UUID);
+            speedModifier.removeModifier(WEIGHT_SPEED_MODIFIER_ID);
+            speedModifier.removeModifier(EXTRA_SPEED_MODIFIER_ID);
         }
     }
 

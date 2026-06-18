@@ -16,8 +16,6 @@ import com.tacz.guns.resource.pojo.data.gun.GunFireModeAdjustData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
@@ -57,7 +55,6 @@ public class AmmoSpeedModifier implements IAttachmentModifier<Modifier, Float> {
     }
 
     @Override
-    @OnlyIn(Dist.CLIENT)
     public List<DiagramsData> getPropertyDiagramsData(ItemStack gunItem, GunData gunData, AttachmentCacheProperty cacheProperty) {
         IGun iGun = Objects.requireNonNull(IGun.getIGunOrNull(gunItem));
         FireMode fireMode = iGun.getFireMode(gunItem);
@@ -83,7 +80,6 @@ public class AmmoSpeedModifier implements IAttachmentModifier<Modifier, Float> {
     }
 
     @Override
-    @OnlyIn(Dist.CLIENT)
     public int getDiagramsDataSize() {
         return 1;
     }

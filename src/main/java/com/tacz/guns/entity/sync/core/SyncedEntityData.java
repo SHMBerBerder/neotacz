@@ -3,11 +3,12 @@ package com.tacz.guns.entity.sync.core;
 import com.google.common.collect.ImmutableSet;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.init.CommonRegistry;
+import com.tacz.guns.init.ModAttachments;
 import com.tacz.guns.network.message.handshake.ServerMessageSyncedEntityDataMapping;
 import it.unimi.dsi.fastutil.ints.Int2ReferenceMap;
 import it.unimi.dsi.fastutil.ints.Int2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.*;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.Marker;
@@ -28,13 +29,13 @@ public class SyncedEntityData {
     private static SyncedEntityData INSTANCE;
 
     private final Set<SyncedClassKey<?>> registeredClassKeys = new HashSet<>();
-    private final Object2ObjectMap<ResourceLocation, SyncedClassKey<?>> idToClassKey = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectMap<Identifier, SyncedClassKey<?>> idToClassKey = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectMap<String, SyncedClassKey<?>> classNameToClassKey = new Object2ObjectOpenHashMap<>();
     private final Map<String, Boolean> clientClassNameCapabilityCache = new ConcurrentHashMap<>();
     private final Map<String, Boolean> serverClassNameCapabilityCache = new ConcurrentHashMap<>();
 
     private final Set<SyncedDataKey<?, ?>> registeredDataKeys = new HashSet<>();
-    private final Reference2ObjectMap<SyncedClassKey<?>, HashMap<ResourceLocation, SyncedDataKey<?, ?>>> classToKeys = new Reference2ObjectOpenHashMap<>();
+    private final Reference2ObjectMap<SyncedClassKey<?>, HashMap<Identifier, SyncedDataKey<?, ?>>> classToKeys = new Reference2ObjectOpenHashMap<>();
     private final Reference2IntMap<SyncedDataKey<?, ?>> internalIds = new Reference2IntOpenHashMap<>();
     private final Int2ReferenceMap<SyncedDataKey<?, ?>> syncedIdToKey = new Int2ReferenceOpenHashMap<>();
 
@@ -66,7 +67,7 @@ public class SyncedEntityData {
      * @param dataKey a synced data key instance
      */
     public synchronized <E extends Entity, T> void registerDataKey(SyncedDataKey<E, T> dataKey) {
-        ResourceLocation keyId = dataKey.id();
+        Identifier keyId = dataKey.id();
         SyncedClassKey<E> classKey = dataKey.classKey();
         if (CommonRegistry.isLoadComplete()) {
             throw new IllegalStateException(String.format("Tried to register synced data key %s for %s after game initialization", keyId, classKey.id()));
@@ -128,7 +129,7 @@ public class SyncedEntityData {
     }
 
     @Nullable
-    public SyncedClassKey<?> getClassKey(ResourceLocation id) {
+    public SyncedClassKey<?> getClassKey(Identifier id) {
         return idToClassKey.get(id);
     }
 
@@ -138,8 +139,8 @@ public class SyncedEntityData {
     }
 
     @Nullable
-    public SyncedDataKey<?, ?> getKey(SyncedClassKey<?> classKey, ResourceLocation dataKey) {
-        Map<ResourceLocation, SyncedDataKey<?, ?>> keys = SyncedEntityData.instance().classToKeys.get(classKey);
+    public SyncedDataKey<?, ?> getKey(SyncedClassKey<?> classKey, Identifier dataKey) {
+        Map<Identifier, SyncedDataKey<?, ?>> keys = SyncedEntityData.instance().classToKeys.get(classKey);
         if (keys == null) {
             return null;
         }
@@ -152,7 +153,7 @@ public class SyncedEntityData {
 
     @Nullable
     public DataHolder getDataHolder(Entity entity) {
-        return entity.getCapability(DataHolderCapabilityProvider.CAPABILITY, null).resolve().orElse(null);
+        return this.hasSyncedDataKey(entity) ? entity.getData(ModAttachments.SYNCED_ENTITY_DATA) : null;
     }
 
 //    public boolean hasSyncedDataKey(Class<? extends Entity> entityClass) {
@@ -181,7 +182,7 @@ public class SyncedEntityData {
          * have a synced data key. In order to prevent checking this every time we attach the
          * capability, a simple one time check can be performed then cache the result. */
         Class<? extends Entity> entityClass = entity.getClass();
-        return this.getClassNameCapabilityCache(entity.level().isClientSide).computeIfAbsent(entityClass.getName(), c ->
+        return this.getClassNameCapabilityCache(entity.level().isClientSide()).computeIfAbsent(entityClass.getName(), c ->
         {
             Class<?> targetClass = entityClass;
             while(!targetClass.isAssignableFrom(Entity.class)) // Should be good enough
@@ -204,7 +205,7 @@ public class SyncedEntityData {
     public boolean updateMappings(ServerMessageSyncedEntityDataMapping message) {
         this.syncedIdToKey.clear();
 
-        List<Pair<ResourceLocation, ResourceLocation>> missingKeys = new ArrayList<>();
+        List<Pair<Identifier, Identifier>> missingKeys = new ArrayList<>();
         message.getKeyMap().forEach((classId, list) -> {
             SyncedClassKey<?> classKey = this.idToClassKey.get(classId);
             if (classKey == null || !this.classToKeys.containsKey(classKey)) {
@@ -212,7 +213,7 @@ public class SyncedEntityData {
                 return;
             }
 
-            Map<ResourceLocation, SyncedDataKey<?, ?>> keys = this.classToKeys.get(classKey);
+            Map<Identifier, SyncedDataKey<?, ?>> keys = this.classToKeys.get(classKey);
             list.forEach(pair -> {
                 SyncedDataKey<?, ?> syncedDataKey = keys.get(pair.getLeft());
                 if (syncedDataKey == null) {

@@ -28,16 +28,18 @@ import com.tacz.guns.client.resource.serialize.Vector3fSerializer;
 import com.tacz.guns.resource.CommonAssetsManager;
 import com.tacz.guns.resource.manager.LazyJsonDataManager;
 import com.tacz.guns.resource.manager.ScriptManager;
+import com.tacz.guns.resource.serialize.IdentifierSerializer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.block.model.ItemTransform;
-import net.minecraft.client.renderer.block.model.ItemTransforms;
+import net.minecraft.client.resources.model.cuboid.ItemTransform;
+import net.minecraft.client.resources.model.cuboid.ItemTransforms;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
+import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.server.ServerLifecycleHooks;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 import org.luaj.vm2.LuaTable;
@@ -46,16 +48,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * 客户端资源管理器<br/>
  * 所有枪包资源缓存在此
  */
-@OnlyIn(Dist.CLIENT)
 public enum ClientAssetsManager {
     INSTANCE;
-    public static final Gson GSON = new GsonBuilder().registerTypeAdapter(ResourceLocation.class, new ResourceLocation.Serializer())
+    public static final Gson GSON = new GsonBuilder().registerTypeAdapter(Identifier.class, new IdentifierSerializer())
             .registerTypeAdapter(CubesItem.class, new CubesItem.Deserializer())
             .registerTypeAdapter(Vector3f.class, new Vector3fSerializer())
             .registerTypeAdapter(CommonTransformObject.class, new CommonTransformObject.Serializer())
@@ -87,79 +88,91 @@ public enum ClientAssetsManager {
     // 枪包元数据
     private PackInfoManager packInfo;
 
-    private List<PreparableReloadListener> listeners;
+    private List<ReloadListenerEntry> listeners;
 
-    public void reloadAndRegister(Consumer<PreparableReloadListener> register) {
+    public void reloadAndRegister(BiConsumer<Identifier, PreparableReloadListener> register) {
         if (listeners == null) {
             listeners = new ArrayList<>();
-            gunDisplay = register(new DisplayManager<>(GunDisplay.class, GSON, "display/guns", "GunDisplayLoader"));
-            ammoDisplay = register(new DisplayManager<>(AmmoDisplay.class, GSON, "display/ammo", "AmmoDisplayLoader"));
-            attachmentDisplay = register(new DisplayManager<>(AttachmentDisplay.class, GSON, "display/attachments", "AttachmentDisplayLoader"));
-            blockDisplay = register(new DisplayManager<>(BlockDisplay.class, GSON, "display/blocks", "BlockDisplayLoader"));
+            gunDisplay = register("client/gun_display", new DisplayManager<>(GunDisplay.class, GSON, "display/guns", "GunDisplayLoader"));
+            ammoDisplay = register("client/ammo_display", new DisplayManager<>(AmmoDisplay.class, GSON, "display/ammo", "AmmoDisplayLoader"));
+            attachmentDisplay = register("client/attachment_display", new DisplayManager<>(AttachmentDisplay.class, GSON, "display/attachments", "AttachmentDisplayLoader"));
+            blockDisplay = register("client/block_display", new DisplayManager<>(BlockDisplay.class, GSON, "display/blocks", "BlockDisplayLoader"));
 
-            bedrockModel = register(new LazyJsonDataManager<>(BedrockModelPOJO.class, GSON, "geo_models", "BedrockModelLoader",
+            bedrockModel = register("client/bedrock_model", new LazyJsonDataManager<>(BedrockModelPOJO.class, GSON, "geo_models", "BedrockModelLoader",
                     id -> GunMod.MOD_ID.equals(id.getNamespace())));
-            bedrockAnimation = register(new LazyJsonDataManager<>(BedrockAnimationFile.class, GSON, new FileToIdConverter("animations", ".animation.json"),
+            bedrockAnimation = register("client/bedrock_animation", new LazyJsonDataManager<>(BedrockAnimationFile.class, GSON, new FileToIdConverter("animations", ".animation.json"),
                     "BedrockAnimationLoader", id -> GunMod.MOD_ID.equals(id.getNamespace())));
-            gltfAnimation = register(new GltfManager());
-            scriptManager = register(new ScriptManager(new FileToIdConverter("scripts", ".lua"), libList));
-            packInfo = register(new PackInfoManager());
-            register((barrier, resourceManager, preparationProfiler, reloadProfiler, backgroundExecutor, gameExecutor) ->
-                    barrier.wait(Void.TYPE).thenRunAsync(ClientIndexManager::reload, gameExecutor));
+            gltfAnimation = register("client/gltf_animation", new GltfManager());
+            scriptManager = register("client/scripts", new ScriptManager(new FileToIdConverter("scripts", ".lua"), libList));
+            packInfo = register("client/pack_info", new PackInfoManager());
+            register("client/index_reload", new SimplePreparableReloadListener<Void>() {
+                @Override
+                protected Void prepare(ResourceManager manager, ProfilerFiller profiler) {
+                    return null;
+                }
+
+                @Override
+                protected void apply(Void preparations, ResourceManager manager, ProfilerFiller profiler) {
+                    ClientIndexManager.reload();
+                }
+            });
         }
-        listeners.forEach(register);
+        listeners.forEach(entry -> register.accept(entry.id(), entry.listener()));
     }
 
-    private <T extends PreparableReloadListener> T register(T listener) {
-        listeners.add(listener);
+    private <T extends PreparableReloadListener> T register(String path, T listener) {
+        listeners.add(new ReloadListenerEntry(Identifier.fromNamespaceAndPath(GunMod.MOD_ID, path), listener));
         return listener;
     }
 
+    private record ReloadListenerEntry(Identifier id, PreparableReloadListener listener) {
+    }
+
     @Nullable
-    public GunDisplay getGunDisplay(ResourceLocation id) {
+    public GunDisplay getGunDisplay(Identifier id) {
         return gunDisplay.getData(id);
     }
 
-    public Set<Map.Entry<ResourceLocation, GunDisplay>> getGunDisplays() {
+    public Set<Map.Entry<Identifier, GunDisplay>> getGunDisplays() {
         return gunDisplay.getAllData().entrySet();
     }
 
-    public Set<ResourceLocation> getGunDisplayIds() {
+    public Set<Identifier> getGunDisplayIds() {
         return gunDisplay.getAllData().keySet();
     }
 
     @Nullable
-    public AttachmentDisplay getAttachmentDisplay(ResourceLocation id) {
+    public AttachmentDisplay getAttachmentDisplay(Identifier id) {
         return attachmentDisplay.getData(id);
     }
 
     @Nullable
-    public AmmoDisplay getAmmoDisplay(ResourceLocation id) {
+    public AmmoDisplay getAmmoDisplay(Identifier id) {
         return ammoDisplay.getData(id);
     }
 
     @Nullable
-    public BlockDisplay getBlockDisplay(ResourceLocation id) {
+    public BlockDisplay getBlockDisplay(Identifier id) {
         return blockDisplay.getData(id);
     }
 
     @Nullable
-    public BedrockModelPOJO getBedrockModelPOJO(ResourceLocation id) {
+    public BedrockModelPOJO getBedrockModelPOJO(Identifier id) {
         return bedrockModel.getData(id);
     }
 
     @Nullable
-    public BedrockAnimationFile getBedrockAnimations(ResourceLocation id) {
+    public BedrockAnimationFile getBedrockAnimations(Identifier id) {
         return bedrockAnimation.getData(id);
     }
 
     @Nullable
-    public LuaTable getScript(ResourceLocation id) {
+    public LuaTable getScript(Identifier id) {
         return scriptManager.getScript(id);
     }
 
     @Nullable
-    public AnimationStructure getGltfAnimation(ResourceLocation id) {
+    public AnimationStructure getGltfAnimation(Identifier id) {
         return gltfAnimation.getGltfAnimation(id);
     }
 
@@ -169,14 +182,13 @@ public enum ClientAssetsManager {
     }
 
     @Nullable
-    public PackInfo getPackInfo(@Nullable ResourceLocation namespace) {
+    public PackInfo getPackInfo(@Nullable Identifier namespace) {
         if (namespace == null) {
             return null;
         }
         return packInfo.getData(namespace.getNamespace());
     }
 
-    @OnlyIn(Dist.CLIENT)
     public static void reloadAllPack() {
         try {
             Minecraft.getInstance().reloadResourcePacks().get();

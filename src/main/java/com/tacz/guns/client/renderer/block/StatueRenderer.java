@@ -5,28 +5,35 @@ import com.mojang.math.Axis;
 import com.tacz.guns.block.TargetBlock;
 import com.tacz.guns.block.entity.StatueBlockEntity;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
+import com.tacz.guns.client.renderer.BedrockSubmitUtils;
 import com.tacz.guns.client.resource.InternalAssetLoader;
 import com.tacz.guns.config.client.RenderConfig;
-import net.minecraft.Util;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import java.util.Optional;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
+import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.util.Util;
 import net.minecraft.world.item.ItemDisplayContext;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
 
-import java.util.Optional;
+public class StatueRenderer implements BlockEntityRenderer<StatueBlockEntity, StatueRenderer.StatueRenderState> {
+    private final ItemModelResolver itemModelResolver;
 
-public class StatueRenderer implements BlockEntityRenderer<StatueBlockEntity> {
     public StatueRenderer(BlockEntityRendererProvider.Context context) {
+        this.itemModelResolver = context.itemModelResolver();
     }
 
     public static Optional<BedrockModel> getModel() {
@@ -34,53 +41,58 @@ public class StatueRenderer implements BlockEntityRenderer<StatueBlockEntity> {
     }
 
     @Override
-    public void render(StatueBlockEntity blockEntity, float partialTick, PoseStack poseStack, MultiBufferSource bufferIn, int combinedLightIn, int combinedOverlayIn) {
+    public StatueRenderState createRenderState() {
+        return new StatueRenderState();
+    }
+
+    @Override
+    public void extractRenderState(StatueBlockEntity blockEntity, StatueRenderState state, float partialTicks,
+                                   Vec3 cameraPosition, ModelFeatureRenderer.@Nullable CrumblingOverlay breakProgress) {
+        BlockEntityRenderer.super.extractRenderState(blockEntity, state, partialTicks, cameraPosition, breakProgress);
+        BlockState blockState = blockEntity.getBlockState();
+        state.facing = blockState.getValue(TargetBlock.FACING);
+        this.itemModelResolver.updateForTopItem(
+                state.gunItem,
+                blockEntity.getGunItem(),
+                ItemDisplayContext.FIXED,
+                blockEntity.getLevel(),
+                null,
+                blockEntity.getBlockPos().hashCode()
+        );
+    }
+
+    @Override
+    public void submit(StatueRenderState state, PoseStack poseStack, SubmitNodeCollector submitNodeCollector, CameraRenderState camera) {
         getModel().ifPresent(model -> {
-            Level level = blockEntity.getLevel();
-            if (level == null) {
-                return;
-            }
-
             poseStack.pushPose();
-            {
-                BlockState blockState = blockEntity.getBlockState();
-                Direction facing = blockState.getValue(TargetBlock.FACING);
+            poseStack.translate(0.5, 1.5, 0.5);
+            poseStack.mulPose(Axis.YN.rotationDegrees((state.facing.get2DDataValue() + 2) % 4 * 90));
+            poseStack.mulPose(Axis.ZN.rotationDegrees(180));
 
-                poseStack.translate(0.5, 1.5, 0.5);
+            RenderType renderType = RenderConfig.BLOCK_ENTITY_TRANSLUCENT.get()
+                    ? RenderTypes.entityTranslucent(getTextureLocation())
+                    : RenderTypes.entityCutout(getTextureLocation());
+            BedrockSubmitUtils.submitModel(
+                    submitNodeCollector,
+                    poseStack,
+                    renderType,
+                    model,
+                    ItemDisplayContext.NONE,
+                    state.lightCoords,
+                    OverlayTexture.NO_OVERLAY
+            );
 
-                poseStack.mulPose(Axis.YN.rotationDegrees((facing.get2DDataValue() + 2) % 4 * 90));
-                poseStack.mulPose(Axis.ZN.rotationDegrees(180));
-
-                RenderType renderType = RenderConfig.BLOCK_ENTITY_TRANSLUCENT.get() ?
-                        RenderType.entityTranslucent(getTextureLocation()) :
-                        RenderType.entityCutout(getTextureLocation());
-                model.render(poseStack, ItemDisplayContext.NONE, renderType, combinedLightIn, combinedOverlayIn);
-
-                poseStack.scale(0.5f, 0.5f, 0.5f);
-                poseStack.translate(0, -0.875, -1.2);
-                poseStack.mulPose(Axis.ZP.rotationDegrees(180));
-
-                double offset = Math.sin(Util.getMillis() / 500.0) * 0.1;
-                poseStack.translate(0, offset, 0);
-
-                ItemStack stack = blockEntity.getGunItem();
-
-                Minecraft.getInstance().getItemRenderer().renderStatic(
-                        stack,
-                        ItemDisplayContext.FIXED,
-                        LightTexture.pack(15, 15),
-                        OverlayTexture.NO_OVERLAY,
-                        poseStack,
-                        bufferIn,
-                        level,
-                        0
-                );
-            }
+            poseStack.scale(0.5f, 0.5f, 0.5f);
+            poseStack.translate(0, -0.875, -1.2);
+            poseStack.mulPose(Axis.ZP.rotationDegrees(180));
+            double offset = Math.sin(Util.getMillis() / 500.0) * 0.1;
+            poseStack.translate(0, offset, 0);
+            state.gunItem.submit(poseStack, submitNodeCollector, LightCoordsUtil.pack(15, 15), OverlayTexture.NO_OVERLAY, 0);
             poseStack.popPose();
         });
     }
 
-    public static ResourceLocation getTextureLocation() {
+    public static Identifier getTextureLocation() {
         return InternalAssetLoader.STATUE_TEXTURE_LOCATION;
     }
 
@@ -90,12 +102,17 @@ public class StatueRenderer implements BlockEntityRenderer<StatueBlockEntity> {
     }
 
     @Override
-    public boolean shouldRenderOffScreen(StatueBlockEntity blockEntity) {
+    public boolean shouldRenderOffScreen() {
         return true;
     }
 
     @Override
     public boolean shouldRender(StatueBlockEntity pBlockEntity, Vec3 pCameraPos) {
         return Vec3.atCenterOf(pBlockEntity.getBlockPos().above()).closerThan(pCameraPos, this.getViewDistance());
+    }
+
+    public static class StatueRenderState extends BlockEntityRenderState {
+        Direction facing = Direction.NORTH;
+        final ItemStackRenderState gunItem = new ItemStackRenderState();
     }
 }

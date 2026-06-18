@@ -1,5 +1,7 @@
 package com.tacz.guns.client.animation.statemachine;
 
+import com.tacz.guns.util.InventoryHandlerUtils;
+
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator;
@@ -24,7 +26,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import org.joml.Vector3f;
 import org.luaj.vm2.LuaTable;
 
@@ -39,6 +40,10 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
     private GunDisplayInstance display;
     private GunData gunData;
     private float walkDistAnchor = 0f;
+    private int walkDistEntityId = Integer.MIN_VALUE;
+    private int walkDistSampleTick = Integer.MIN_VALUE;
+    private float walkDistPrevious = 0f;
+    private float walkDistCurrent = 0f;
     private LuaNbtAccessor nbtUtil;
 
     private <T> Optional<T> processGunData(BiFunction<IGun, GunDisplayInstance, T> processor) {
@@ -67,7 +72,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
     }
 
     private <T> Optional<T> processCameraEntity(Function<Entity, T> processor) {
-        Entity entity = Minecraft.getInstance().cameraEntity;
+        Entity entity = Minecraft.getInstance().getCameraEntity();
         if (entity != null) {
             return Optional.ofNullable(processor.apply(entity));
         }
@@ -172,8 +177,11 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
         if (iGun.useDummyAmmo(currentGunItem)) {
             return iGun.getDummyAmmoAmount(currentGunItem) > 0;
         }
-        return processCameraEntity(entity ->
-                    entity.getCapability(ForgeCapabilities.ITEM_HANDLER, null)
+        return processCameraEntity(entity -> {
+                    if (!(entity instanceof LivingEntity livingEntity)) {
+                        return false;
+                    }
+                    return InventoryHandlerUtils.of(livingEntity)
                         .map(cap -> {
                             // 背包检查
                             for (int i = 0; i < cap.getSlots(); i++) {
@@ -187,7 +195,8 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
                             }
                             return false;
                         })
-                        .orElse(false)
+                        .orElse(false);
+                }
                 ).orElse(false);
     }
 
@@ -253,7 +262,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      * @return 玩家的按键输入是否为上 (对应着移动中的前进按键，如 W)
      */
     public boolean isInputUp() {
-        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.up).orElse(false);
+        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.keyPresses.forward()).orElse(false);
     }
 
     /**
@@ -261,7 +270,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      * @return 玩家的按键输入是否为下 (对应着移动中的后退按键，如 S)
      */
     public boolean isInputDown() {
-        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.down).orElse(false);
+        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.keyPresses.backward()).orElse(false);
     }
 
     /**
@@ -269,7 +278,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      * @return 玩家的按键输入是否为左 (对应着移动中的左移按键，如 A)
      */
     public boolean isInputLeft() {
-        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.left).orElse(false);
+        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.keyPresses.left()).orElse(false);
     }
 
     /**
@@ -277,7 +286,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      * @return 玩家的按键输入是否为右 (对应着移动中的右移按键，如 D)
      */
     public boolean isInputRight() {
-        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.right).orElse(false);
+        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.keyPresses.right()).orElse(false);
     }
 
     /**
@@ -285,7 +294,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      * @return 玩家的按键输入是否为跳跃 (对应着移动中的跳跃按键，如 Space)
      */
     public boolean isInputJumping() {
-        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.jumping).orElse(false);
+        return Optional.ofNullable(Minecraft.getInstance().player).map(player -> player.input.keyPresses.jump()).orElse(false);
     }
 
     /**
@@ -326,7 +335,7 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      */
     public void anchorWalkDist() {
         processCameraEntity(entity -> {
-            walkDistAnchor = entity.walkDist + (entity.walkDist - entity.walkDistO) * partialTicks;
+            walkDistAnchor = getLegacyWalkDistance(entity);
             return null;
         });
     }
@@ -337,9 +346,28 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
      */
     public float getWalkDist() {
         return processCameraEntity(entity -> {
-            float currentWalkDist = entity.walkDist + (entity.walkDist - entity.walkDistO) * partialTicks;
+            float currentWalkDist = getLegacyWalkDistance(entity);
             return currentWalkDist - walkDistAnchor;
         }).orElse(0f);
+    }
+
+    private float getLegacyWalkDistance(Entity entity) {
+        int entityId = entity.getId();
+        int tick = entity.tickCount;
+        float currentMoveDist = entity.moveDist;
+        if (walkDistEntityId != entityId || tick < walkDistSampleTick || tick - walkDistSampleTick > 1 || currentMoveDist < walkDistPrevious) {
+            walkDistEntityId = entityId;
+            walkDistSampleTick = tick;
+            walkDistPrevious = currentMoveDist;
+            walkDistCurrent = currentMoveDist;
+        } else if (tick != walkDistSampleTick) {
+            walkDistPrevious = walkDistCurrent;
+            walkDistCurrent = currentMoveDist;
+            walkDistSampleTick = tick;
+        } else {
+            walkDistCurrent = currentMoveDist;
+        }
+        return walkDistCurrent + (walkDistCurrent - walkDistPrevious) * partialTicks;
     }
 
     /**
@@ -450,8 +478,6 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
             gunData = TimelessAPI.getClientGunIndex(iGun.getGunId(currentGunItem))
                     .map(ClientGunIndex::getGunData).orElse(null);
         }
-        if (currentGunItem.hasTag()) {
-            nbtUtil = new LuaNbtAccessor(currentGunItem.getTag());
-        }
+        nbtUtil = LuaNbtAccessor.from(currentGunItem);
     }
 }

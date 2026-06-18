@@ -1,8 +1,7 @@
 package com.tacz.guns.client.event;
 
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.platform.Window;
-import com.mojang.blaze3d.systems.RenderSystem;
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.client.animation.statemachine.AnimationStateContext;
@@ -15,25 +14,28 @@ import com.tacz.guns.client.gui.GunRefitScreen;
 import com.tacz.guns.client.renderer.crosshair.CrosshairType;
 import com.tacz.guns.compat.shouldersurfing.ShoulderSurfingCompat;
 import com.tacz.guns.config.client.RenderConfig;
+import com.tacz.guns.util.MinecraftGuiCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
 
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class RenderCrosshairEvent {
-    private static final ResourceLocation HIT_ICON = new ResourceLocation(GunMod.MOD_ID, "textures/crosshair/hit/hit_marker.png");
+    private static final Identifier HIT_ICON = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "textures/crosshair/hit/hit_marker.png");
     private static final long KEEP_TIME = 300;
     private static boolean isRefitScreen = false;
     private static long hitTimestamp = -1L;
@@ -44,8 +46,8 @@ public class RenderCrosshairEvent {
      * 当玩家手上拿着枪时，播放特定动画、或瞄准时需要隐藏准心
      */
     @SubscribeEvent(receiveCanceled = true)
-    public static void onRenderOverlay(RenderGuiOverlayEvent.Pre event) {
-        if (event.getOverlay().id().equals(VanillaGuiOverlay.CROSSHAIR.id())) {
+    public static void onRenderOverlay(RenderGuiLayerEvent.Pre event) {
+        if (event.getName().equals(VanillaGuiLayers.CROSSHAIR)) {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null) {
                 return;
@@ -56,7 +58,7 @@ public class RenderCrosshairEvent {
             // 全面替换成自己的
             event.setCanceled(true);
             // 击中显示
-            renderHitMarker(event.getGuiGraphics(), event.getWindow());
+            renderHitMarker(event.getGuiGraphics());
             // 换弹进行时取消准心渲染
             ReloadState reloadState = IGunOperator.fromLivingEntity(player).getSynReloadState();
             if (reloadState.getStateType().isReloading()) {
@@ -73,9 +75,10 @@ public class RenderCrosshairEvent {
             }
 
             IClientPlayerGunOperator playerGunOperator = IClientPlayerGunOperator.fromLocalPlayer(player);
+            float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
             TimelessAPI.getGunDisplay(stack).ifPresent(gunIndex -> {
                 // 瞄准快要完成时，取消准心渲染
-                if (playerGunOperator.getClientAimingProgress(event.getPartialTick()) > 0.9) {
+                if (playerGunOperator.getClientAimingProgress(partialTick) > 0.9) {
                     // 枪包可以强制显示准星
                     boolean forceShow = gunIndex.isShowCrosshair();
                     // 越肩视角可以强制显示准星
@@ -88,31 +91,31 @@ public class RenderCrosshairEvent {
 
                 AnimationStateMachine<?> animationStateMachine = gunIndex.getAnimationStateMachine();
                 if (animationStateMachine == null) {
-                    renderCrosshair(event.getGuiGraphics(), event.getWindow());
+                    renderCrosshair(event.getGuiGraphics());
                     return;
                 }
                 AnimationStateContext context = animationStateMachine.getContext();
                 if (context == null || !context.shouldHideCrossHair()) {
-                    renderCrosshair(event.getGuiGraphics(), event.getWindow());
+                    renderCrosshair(event.getGuiGraphics());
                 }
             });
         }
     }
 
     @SubscribeEvent
-    public static void onRenderTick(TickEvent.RenderTickEvent event) {
+    public static void onRenderTick(RenderFrameEvent.Pre event) {
         // 奇迹的是，RenderGameOverlayEvent.PreLayer 事件中，screen 还未被赋值...
-        isRefitScreen = Minecraft.getInstance().screen instanceof GunRefitScreen;
+        isRefitScreen = MinecraftGuiCompat.screen() instanceof GunRefitScreen;
     }
 
-    private static void renderCrosshair(GuiGraphics graphics, Window window) {
+    private static void renderCrosshair(GuiGraphicsExtractor graphics) {
         Options options = Minecraft.getInstance().options;
         // 越肩视角可以强制显示准星
         boolean shoulderSurfingForceShow = ShoulderSurfingCompat.showCrosshair();
         if (!options.getCameraType().isFirstPerson() && !shoulderSurfingForceShow) {
             return;
         }
-        if (options.hideGui) {
+        if (Minecraft.getInstance().gui.hud.isHidden()) {
             return;
         }
         MultiPlayerGameMode gameMode = Minecraft.getInstance().gameMode;
@@ -122,20 +125,17 @@ public class RenderCrosshairEvent {
         if (gameMode.getPlayerMode() == GameType.SPECTATOR) {
             return;
         }
-        int width = window.getGuiScaledWidth();
-        int height = window.getGuiScaledHeight();
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
 
-        ResourceLocation location = CrosshairType.getTextureLocation(RenderConfig.CROSSHAIR_TYPE.get());
+        Identifier location = CrosshairType.getTextureLocation(RenderConfig.CROSSHAIR_TYPE.get());
 
-        RenderSystem.enableBlend();
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
-        RenderSystem.setShaderColor(1F, 1F, 1F, 0.9f);
         float x = width / 2f - 8;
         float y = height / 2f - 8;
-        graphics.blit(location, (int) x, (int) y, 0, 0, 16, 16, 16, 16);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, location, (int) x, (int) y, 0, 0, 16, 16, 16, 16, ARGB.white(0.9f));
     }
 
-    private static void renderHitMarker(GuiGraphics graphics, Window window) {
+    private static void renderHitMarker(GuiGraphicsExtractor graphics) {
         long remainHitTime = System.currentTimeMillis() - hitTimestamp;
         long remainKillTime = System.currentTimeMillis() - killTimestamp;
         long remainHeadShotTime = System.currentTimeMillis() - headShotTimestamp;
@@ -154,23 +154,17 @@ public class RenderCrosshairEvent {
             fadeTime = remainKillTime;
         }
 
-        int width = window.getGuiScaledWidth();
-        int height = window.getGuiScaledHeight();
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
         float x = width / 2f - 8;
         float y = height / 2f - 8;
 
-        RenderSystem.enableBlend();
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
-        if (remainHeadShotTime > KEEP_TIME) {
-            RenderSystem.setShaderColor(1F, 1F, 1F, 1 - fadeTime / KEEP_TIME);
-        } else {
-            RenderSystem.setShaderColor(1F, 0, 0, 1 - fadeTime / KEEP_TIME);
-        }
-
-        graphics.blit(HIT_ICON, (int) (x - offset), (int) (y - offset), 0, 0, 8, 8, 16, 16);
-        graphics.blit(HIT_ICON, (int) (x + 8 + offset), (int) (y - offset), 8, 0, 8, 8, 16, 16);
-        graphics.blit(HIT_ICON, (int) (x - offset), (int) (y + 8 + offset), 0, 8, 8, 8, 16, 16);
-        graphics.blit(HIT_ICON, (int) (x + 8 + offset), (int) (y + 8 + offset), 8, 8, 8, 8, 16, 16);
+        float alpha = 1 - fadeTime / KEEP_TIME;
+        int color = remainHeadShotTime > KEEP_TIME ? ARGB.white(alpha) : ARGB.color(alpha, 0xFF0000);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, HIT_ICON, (int) (x - offset), (int) (y - offset), 0, 0, 8, 8, 16, 16, color);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, HIT_ICON, (int) (x + 8 + offset), (int) (y - offset), 8, 0, 8, 8, 16, 16, color);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, HIT_ICON, (int) (x - offset), (int) (y + 8 + offset), 0, 8, 8, 8, 16, 16, color);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, HIT_ICON, (int) (x + 8 + offset), (int) (y + 8 + offset), 8, 8, 8, 8, 16, 16, color);
     }
 
     public static void markHitTimestamp() {

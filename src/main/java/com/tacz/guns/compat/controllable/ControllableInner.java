@@ -3,12 +3,14 @@ package com.tacz.guns.compat.controllable;
 import com.mrcrayfish.controllable.Controllable;
 import com.mrcrayfish.controllable.client.binding.BindingRegistry;
 import com.mrcrayfish.controllable.client.binding.ButtonBinding;
-import com.mrcrayfish.controllable.client.binding.IBindingContext;
+import com.mrcrayfish.controllable.client.binding.context.BindingContext;
+import com.mrcrayfish.controllable.client.binding.context.InGameContext;
+import com.mrcrayfish.controllable.client.binding.handlers.EmptyHandler;
 import com.mrcrayfish.controllable.client.input.Buttons;
 import com.mrcrayfish.controllable.client.input.Controller;
 import com.mrcrayfish.controllable.event.ControllerEvents;
 import com.mrcrayfish.controllable.event.Value;
-import com.mrcrayfish.framework.api.event.TickEvents;
+import com.mrcrayfish.framework.api.event.client.FrameworkClientTickEvents;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.gun.FireMode;
@@ -17,21 +19,23 @@ import com.tacz.guns.client.resource.pojo.display.gun.ControllableData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.client.settings.KeyConflictContext;
+import net.neoforged.neoforge.client.settings.IKeyConflictContext;
+import net.neoforged.neoforge.client.settings.KeyConflictContext;
 
 import java.util.EnumMap;
 
 public class ControllableInner {
-    public static final IBindingContext GUN_KEY_CONFLICT = new GunKeyConflict();
-    public static final ButtonBinding AIM = new ButtonBinding(Buttons.LEFT_TRIGGER, "key.tacz.aim.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding SHOOT = new ButtonBinding(Buttons.RIGHT_TRIGGER, "key.tacz.shoot.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding RELOAD = new ButtonBinding(Buttons.B, "key.tacz.reload.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding MELEE = new ButtonBinding(Buttons.X, "key.tacz.melee.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding ZOOM = new ButtonBinding(Buttons.X, "key.tacz.zoom.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding CRAWL = new ButtonBinding(Buttons.LEFT_THUMB_STICK, "key.tacz.crawl.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding FIRE_SELECT = new ButtonBinding(Buttons.DPAD_LEFT, "key.tacz.fire_select.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding INTERACT = new ButtonBinding(-1, "key.tacz.interact.desc", "key.category.tacz", GUN_KEY_CONFLICT);
-    public static final ButtonBinding INSPECT = new ButtonBinding(-1, "key.tacz.inspect.desc", "key.category.tacz", GUN_KEY_CONFLICT);
+    public static final IKeyConflictContext GUN_KEY_CONFLICT = new GunKeyConflict();
+    private static final BindingContext BINDING_CONTEXT = InGameContext.INSTANCE;
+    public static final ButtonBinding AIM = new ButtonBinding(Buttons.LEFT_TRIGGER, "key.tacz.aim.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding SHOOT = new ButtonBinding(Buttons.RIGHT_TRIGGER, "key.tacz.shoot.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding RELOAD = new ButtonBinding(Buttons.B, "key.tacz.reload.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding MELEE = new ButtonBinding(Buttons.X, "key.tacz.melee.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding ZOOM = new ButtonBinding(Buttons.X, "key.tacz.zoom.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding CRAWL = new ButtonBinding(Buttons.LEFT_THUMB_STICK, "key.tacz.crawl.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding FIRE_SELECT = new ButtonBinding(Buttons.DPAD_LEFT, "key.tacz.fire_select.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding INTERACT = new ButtonBinding(-1, "key.tacz.interact.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
+    public static final ButtonBinding INSPECT = new ButtonBinding(-1, "key.tacz.inspect.desc", "key.category.tacz", BINDING_CONTEXT, EmptyHandler.INSTANCE);
 
     public static void init() {
         BindingRegistry.getInstance().register(AIM);
@@ -45,7 +49,7 @@ public class ControllableInner {
         BindingRegistry.getInstance().register(INSPECT);
 
         ControllerEvents.INPUT.register(ControllableInner::onButtonInput);
-        TickEvents.END_CLIENT.register(ControllableInner::onClientTickEnd);
+        FrameworkClientTickEvents.END_CLIENT.register(ControllableInner::onClientTickEnd);
     }
 
     public static boolean onButtonInput(Controller controller, Value<Integer> newButton, int originalButton, boolean isPress) {
@@ -115,7 +119,7 @@ public class ControllableInner {
         });
     }
 
-    public static class GunKeyConflict implements IBindingContext {
+    public static class GunKeyConflict implements IKeyConflictContext {
         @Override
         public boolean isActive() {
             LocalPlayer player = Minecraft.getInstance().player;
@@ -123,7 +127,7 @@ public class ControllableInner {
         }
 
         @Override
-        public boolean conflicts(IBindingContext other) {
+        public boolean conflicts(IKeyConflictContext other) {
             return this == other;
         }
     }

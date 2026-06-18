@@ -1,14 +1,9 @@
 package com.tacz.guns.network.message;
 
 import com.tacz.guns.entity.sync.core.DataEntry;
-import com.tacz.guns.entity.sync.core.SyncedEntityData;
-import net.minecraft.client.Minecraft;
+import com.tacz.guns.network.NetworkHandler;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.Level;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.network.NetworkEvent;
+import com.tacz.guns.network.NetworkContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,25 +34,15 @@ public class ServerMessageUpdateEntityData {
         return new ServerMessageUpdateEntityData(entityId, entries);
     }
 
-    public static void handle(ServerMessageUpdateEntityData message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
-        if (context.getDirection().getReceptionSide().isClient()) {
-            context.enqueueWork(() -> onHandle(message));
-        }
-        context.setPacketHandled(true);
+    public static void handle(ServerMessageUpdateEntityData message, Supplier<NetworkContext> contextSupplier) {
+        NetworkHandler.handleClientboundMessage(message, contextSupplier);
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private static void onHandle(ServerMessageUpdateEntityData message) {
-        Level level = Minecraft.getInstance().level;
-        if (level == null) {
-            return;
-        }
-        Entity entity = level.getEntity(message.entityId);
-        if (entity == null) {
-            return;
-        }
-        SyncedEntityData instance = SyncedEntityData.instance();
-        message.entries.forEach(entry -> instance.set(entity, entry.getKey(), entry.getValue()));
+    public int getEntityId() {
+        return entityId;
+    }
+
+    public List<DataEntry<?, ?>> getEntries() {
+        return entries;
     }
 }

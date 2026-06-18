@@ -8,7 +8,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.network.NetworkEvent;
+import com.tacz.guns.network.NetworkContext;
 
 import java.util.function.Supplier;
 
@@ -30,8 +30,8 @@ public class ClientMessageUnloadAttachment {
         return new ClientMessageUnloadAttachment(buf.readInt(), buf.readEnum(AttachmentType.class));
     }
 
-    public static void handle(ClientMessageUnloadAttachment message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
+    public static void handle(ClientMessageUnloadAttachment message, Supplier<NetworkContext> contextSupplier) {
+        NetworkContext context = contextSupplier.get();
         if (context.getDirection().getReceptionSide().isServer()) {
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
@@ -39,6 +39,9 @@ public class ClientMessageUnloadAttachment {
                     return;
                 }
                 Inventory inventory = player.getInventory();
+                if (isInvalidSlot(inventory, message.gunSlotIndex)) {
+                    return;
+                }
                 ItemStack gunItem = inventory.getItem(message.gunSlotIndex);
                 IGun iGun = IGun.getIGunOrNull(gunItem);
                 if (iGun != null) {
@@ -62,6 +65,10 @@ public class ClientMessageUnloadAttachment {
             });
         }
         context.setPacketHandled(true);
+    }
+
+    private static boolean isInvalidSlot(Inventory inventory, int slot) {
+        return slot < 0 || slot >= inventory.getContainerSize();
     }
 
 }

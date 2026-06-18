@@ -1,20 +1,26 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
+import com.tacz.guns.GunMod;
 import com.tacz.guns.client.gui.GunRefitScreen;
 import com.tacz.guns.client.gui.GunSmithTableScreen;
-import net.minecraft.client.Minecraft;
+import com.tacz.guns.util.MinecraftGuiCompat;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class PreventsHotbarEvent {
     @SubscribeEvent
-    public static void onRenderHotbarEvent(RenderGuiOverlayEvent.Pre event) {
+    public static void onRenderHotbarEvent(RenderGuiLayerEvent.Pre event) {
+        if (!VanillaGuiLayers.HOTBAR.equals(event.getName())) {
+            return;
+        }
         // todo 需要测试行为
-        Screen screen = Minecraft.getInstance().screen;
+        Screen screen = MinecraftGuiCompat.screen();
         // 枪械合成台界面关闭背景
         if (screen instanceof GunSmithTableScreen) {
             event.setCanceled(true);

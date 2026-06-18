@@ -1,9 +1,11 @@
 package com.tacz.guns.entity.sync.core;
 
+import com.tacz.guns.api.item.nbt.ItemStackNbtHelper;
+import com.tacz.guns.network.NetworkBufferUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.*;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.UUID;
@@ -35,7 +37,7 @@ public class Serializers {
 
         @Override
         public Boolean read(Tag tag) {
-            return ((ByteTag) tag).getAsByte() != 0;
+            return ((ByteTag) tag).byteValue() != 0;
         }
     };
 
@@ -57,7 +59,7 @@ public class Serializers {
 
         @Override
         public Byte read(Tag tag) {
-            return ((ByteTag) tag).getAsByte();
+            return ((ByteTag) tag).byteValue();
         }
     };
 
@@ -79,7 +81,7 @@ public class Serializers {
 
         @Override
         public Short read(Tag tag) {
-            return ((ShortTag) tag).getAsShort();
+            return ((ShortTag) tag).shortValue();
         }
     };
 
@@ -101,7 +103,7 @@ public class Serializers {
 
         @Override
         public Integer read(Tag tag) {
-            return ((IntTag) tag).getAsInt();
+            return ((IntTag) tag).intValue();
         }
     };
 
@@ -123,7 +125,7 @@ public class Serializers {
 
         @Override
         public Long read(Tag tag) {
-            return ((LongTag) tag).getAsLong();
+            return ((LongTag) tag).longValue();
         }
     };
 
@@ -145,7 +147,7 @@ public class Serializers {
 
         @Override
         public Float read(Tag tag) {
-            return ((FloatTag) tag).getAsFloat();
+            return ((FloatTag) tag).floatValue();
         }
     };
 
@@ -167,7 +169,7 @@ public class Serializers {
 
         @Override
         public Double read(Tag tag) {
-            return ((DoubleTag) tag).getAsDouble();
+            return ((DoubleTag) tag).doubleValue();
         }
     };
 
@@ -189,7 +191,7 @@ public class Serializers {
 
         @Override
         public Character read(Tag tag) {
-            return (char) ((IntTag) tag).getAsInt();
+            return (char) ((IntTag) tag).intValue();
         }
     };
 
@@ -211,7 +213,7 @@ public class Serializers {
 
         @Override
         public String read(Tag tag) {
-            return tag.getAsString();
+            return tag.asString().orElse("");
         }
     };
 
@@ -255,7 +257,7 @@ public class Serializers {
 
         @Override
         public BlockPos read(Tag tag) {
-            return BlockPos.of(((LongTag) tag).getAsLong());
+            return BlockPos.of(((LongTag) tag).longValue());
         }
     };
 
@@ -281,51 +283,51 @@ public class Serializers {
         @Override
         public UUID read(Tag tag) {
             CompoundTag compound = (CompoundTag) tag;
-            return new UUID(compound.getLong("Most"), compound.getLong("Least"));
+            return new UUID(compound.getLongOr("Most", 0L), compound.getLongOr("Least", 0L));
         }
     };
 
     public static final IDataSerializer<ItemStack> ITEM_STACK = new IDataSerializer<>() {
         @Override
         public void write(FriendlyByteBuf buf, ItemStack value) {
-            buf.writeItem(value);
+            NetworkBufferUtils.writeItem(buf, value);
         }
 
         @Override
         public ItemStack read(FriendlyByteBuf buf) {
-            return buf.readItem();
+            return NetworkBufferUtils.readItem(buf);
         }
 
         @Override
         public Tag write(ItemStack value) {
-            return value.save(new CompoundTag());
+            return ItemStackNbtHelper.saveLegacyStackSubset(value);
         }
 
         @Override
         public ItemStack read(Tag tag) {
-            return ItemStack.of((CompoundTag) tag);
+            return tag instanceof CompoundTag compoundTag ? ItemStackNbtHelper.parseLegacyStackSubset(compoundTag) : ItemStack.EMPTY;
         }
     };
 
-    public static final IDataSerializer<ResourceLocation> RESOURCE_LOCATION = new IDataSerializer<>() {
+    public static final IDataSerializer<Identifier> RESOURCE_LOCATION = new IDataSerializer<>() {
         @Override
-        public void write(FriendlyByteBuf buf, ResourceLocation value) {
-            buf.writeResourceLocation(value);
+        public void write(FriendlyByteBuf buf, Identifier value) {
+            buf.writeIdentifier(value);
         }
 
         @Override
-        public ResourceLocation read(FriendlyByteBuf buf) {
-            return buf.readResourceLocation();
+        public Identifier read(FriendlyByteBuf buf) {
+            return buf.readIdentifier();
         }
 
         @Override
-        public Tag write(ResourceLocation value) {
+        public Tag write(Identifier value) {
             return StringTag.valueOf(value.toString());
         }
 
         @Override
-        public ResourceLocation read(Tag tag) {
-            return ResourceLocation.tryParse(tag.getAsString());
+        public Identifier read(Tag tag) {
+            return Identifier.tryParse(tag.asString().orElse(""));
         }
     };
 }

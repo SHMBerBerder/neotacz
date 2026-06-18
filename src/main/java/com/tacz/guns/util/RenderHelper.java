@@ -1,46 +1,161 @@
 package com.tacz.guns.util;
 
-import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.compat.ar.ARCompat;
 import com.tacz.guns.compat.optifine.OptifineCompat;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.client.renderer.entity.player.PlayerRenderer;
+import net.minecraft.client.renderer.entity.player.AvatarRenderer;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.HumanoidArm;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import org.joml.Matrix4f;
+import net.minecraft.world.entity.player.PlayerModelPart;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
-@OnlyIn(Dist.CLIENT)
+import java.util.function.BiConsumer;
+
 public final class RenderHelper {
-    public static void blit(PoseStack poseStack, float x, float y, float uOffset, float vOffset, float pWidth, float height, float textureWidth, float textureHeight) {
-        blit(poseStack, x, y, pWidth, height, uOffset, vOffset, pWidth, height, textureWidth, textureHeight);
+    private static final ThreadLocal<SubmitNodeCollector> CURRENT_SUBMIT_NODE_COLLECTOR = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> CUSTOM_GEOMETRY_CALLBACK_DEPTH = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> DEFERRED_RENDERERS_SUPPRESSED = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> DEFERRED_FUNCTIONAL_RENDERER_COLLECTION = new ThreadLocal<>();
+    private static final VertexConsumer NOOP_VERTEX_CONSUMER = new VertexConsumer() {
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int color) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv2(int u, int v) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setNormal(float x, float y, float z) {
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setLineWidth(float width) {
+            return this;
+        }
+    };
+
+    public static void withSubmitNodeCollector(SubmitNodeCollector collector, Runnable action) {
+        SubmitNodeCollector previous = CURRENT_SUBMIT_NODE_COLLECTOR.get();
+        CURRENT_SUBMIT_NODE_COLLECTOR.set(collector);
+        try {
+            action.run();
+        } finally {
+            if (previous == null) {
+                CURRENT_SUBMIT_NODE_COLLECTOR.remove();
+            } else {
+                CURRENT_SUBMIT_NODE_COLLECTOR.set(previous);
+            }
+        }
     }
 
-    private static void blit(PoseStack poseStack, float x, float y, float pWidth, float height, float uOffset, float vOffset, float uWidth, float vHeight, float textureWidth, float textureHeight) {
-        innerBlit(poseStack, x, x + pWidth, y, y + height, 0, uWidth, vHeight, uOffset, vOffset, textureWidth, textureHeight);
+    public static SubmitNodeCollector currentSubmitNodeCollector() {
+        return CURRENT_SUBMIT_NODE_COLLECTOR.get();
     }
 
-    private static void innerBlit(PoseStack poseStack, float x1, float x2, float y1, float y2, float blitOffset, float uWidth, float vHeight, float uOffset, float vOffset, float textureWidth, float textureHeight) {
-        innerBlit(poseStack.last().pose(), x1, x2, y1, y2, blitOffset, (uOffset + 0.0F) / textureWidth, (uOffset + uWidth) / textureWidth, (vOffset + 0.0F) / textureHeight, (vOffset + vHeight) / textureHeight);
+    public static void submitCustomGeometry(SubmitNodeCollector collector, PoseStack poseStack, RenderType renderType,
+                                            BiConsumer<PoseStack.Pose, VertexConsumer> renderer) {
+        if (collector == null) {
+            return;
+        }
+        collector.submitCustomGeometry(poseStack, renderType, (pose, buffer) ->
+                withSubmitCustomGeometryContext(collector, () -> renderer.accept(pose, buffer)));
     }
 
-    private static void innerBlit(Matrix4f matrix, float x1, float x2, float y1, float y2, float blitOffset, float minU, float maxU, float minV, float maxV) {
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        BufferBuilder bufferbuilder = Tesselator.getInstance().getBuilder();
-        bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        bufferbuilder.vertex(matrix, x1, y2, blitOffset).uv(minU, maxV).endVertex();
-        bufferbuilder.vertex(matrix, x2, y2, blitOffset).uv(maxU, maxV).endVertex();
-        bufferbuilder.vertex(matrix, x2, y1, blitOffset).uv(maxU, minV).endVertex();
-        bufferbuilder.vertex(matrix, x1, y1, blitOffset).uv(minU, minV).endVertex();
-        BufferUploader.draw(bufferbuilder.end());
+    public static boolean isInsideSubmitCustomGeometryCallback() {
+        Integer depth = CUSTOM_GEOMETRY_CALLBACK_DEPTH.get();
+        return depth != null && depth > 0;
+    }
+
+    public static void withSubmitCustomGeometryContext(SubmitNodeCollector collector, Runnable action) {
+        withSubmitNodeCollector(collector, () -> {
+            Integer previousDepth = CUSTOM_GEOMETRY_CALLBACK_DEPTH.get();
+            int depth = previousDepth == null ? 0 : previousDepth;
+            CUSTOM_GEOMETRY_CALLBACK_DEPTH.set(depth + 1);
+            try {
+                action.run();
+            } finally {
+                if (previousDepth == null) {
+                    CUSTOM_GEOMETRY_CALLBACK_DEPTH.remove();
+                } else {
+                    CUSTOM_GEOMETRY_CALLBACK_DEPTH.set(previousDepth);
+                }
+            }
+        });
+    }
+
+    public static boolean areDeferredRenderersSuppressed() {
+        return Boolean.TRUE.equals(DEFERRED_RENDERERS_SUPPRESSED.get());
+    }
+
+    public static void withDeferredRenderersSuppressed(Runnable action) {
+        Boolean previous = DEFERRED_RENDERERS_SUPPRESSED.get();
+        DEFERRED_RENDERERS_SUPPRESSED.set(Boolean.TRUE);
+        try {
+            action.run();
+        } finally {
+            if (previous == null) {
+                DEFERRED_RENDERERS_SUPPRESSED.remove();
+            } else {
+                DEFERRED_RENDERERS_SUPPRESSED.set(previous);
+            }
+        }
+    }
+
+    public static boolean isCollectingDeferredFunctionalRenderers() {
+        return Boolean.TRUE.equals(DEFERRED_FUNCTIONAL_RENDERER_COLLECTION.get());
+    }
+
+    public static void withDeferredFunctionalRendererCollection(Runnable action) {
+        Boolean previous = DEFERRED_FUNCTIONAL_RENDERER_COLLECTION.get();
+        DEFERRED_FUNCTIONAL_RENDERER_COLLECTION.set(Boolean.TRUE);
+        try {
+            action.run();
+        } finally {
+            if (previous == null) {
+                DEFERRED_FUNCTIONAL_RENDERER_COLLECTION.remove();
+            } else {
+                DEFERRED_FUNCTIONAL_RENDERER_COLLECTION.set(previous);
+            }
+        }
+    }
+
+    public static VertexConsumer noopVertexConsumer() {
+        return NOOP_VERTEX_CONSUMER;
     }
 
     public static void enableItemEntityStencilTest() {
@@ -59,39 +174,101 @@ public final class RenderHelper {
                     GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, 3553, depthTextureId, 0);
                 }
             }
-        } else {
-            Minecraft.getInstance().getMainRenderTarget().enableStencil();
         }
-        GL11.glEnable(GL11.GL_STENCIL_TEST);
+        GlStateManager._enableStencilTest();
     }
 
     public static void disableItemEntityStencilTest() {
         RenderSystem.assertOnRenderThread();
-        GL11.glDisable(GL11.GL_STENCIL_TEST);
+        resetStencilState();
+        GlStateManager._disableStencilTest();
+    }
+
+    public static void resetStencilState() {
+        stencilFunc(GL11.GL_ALWAYS, 0, 0xFF);
+        stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+        stencilMask(0xFF);
+    }
+
+    public static void stencilFunc(int func, int ref, int mask) {
+        RenderSystem.assertOnRenderThread();
+        GlStateManager._stencilFunc(func, ref, mask);
+    }
+
+    public static void stencilOp(int sfail, int dpfail, int dppass) {
+        RenderSystem.assertOnRenderThread();
+        GlStateManager._stencilOp(sfail, dpfail, dppass);
+    }
+
+    public static void stencilMask(int mask) {
+        RenderSystem.assertOnRenderThread();
+        GlStateManager._stencilMask(mask);
+    }
+
+    public static void clearStencilBuffer() {
+        RenderSystem.assertOnRenderThread();
+        GL11.glClearStencil(0);
+        GlStateManager._clear(GL11.GL_STENCIL_BUFFER_BIT);
+    }
+
+    public static void colorMask(boolean red, boolean green, boolean blue, boolean alpha) {
+        RenderSystem.assertOnRenderThread();
+        int writeMask = 0;
+        if (red) {
+            writeMask |= ColorTargetState.WRITE_RED;
+        }
+        if (green) {
+            writeMask |= ColorTargetState.WRITE_GREEN;
+        }
+        if (blue) {
+            writeMask |= ColorTargetState.WRITE_BLUE;
+        }
+        if (alpha) {
+            writeMask |= ColorTargetState.WRITE_ALPHA;
+        }
+        GlStateManager._colorMask(writeMask);
+    }
+
+    public static void depthMask(boolean flag) {
+        RenderSystem.assertOnRenderThread();
+        GlStateManager._depthMask(flag);
+    }
+
+    public static void disableDepthTest() {
+        RenderSystem.assertOnRenderThread();
+        GlStateManager._disableDepthTest();
+    }
+
+    public static void enableDepthTest() {
+        RenderSystem.assertOnRenderThread();
+        GlStateManager._enableDepthTest();
     }
 
     public static void renderFirstPersonArm(LocalPlayer player, HumanoidArm hand, PoseStack matrixStack, int combinedLight) {
+        SubmitNodeCollector submitNodeCollector = CURRENT_SUBMIT_NODE_COLLECTOR.get();
+        if (player == null || submitNodeCollector == null) {
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         EntityRenderDispatcher renderManager = mc.getEntityRenderDispatcher();
-        PlayerRenderer renderer = (PlayerRenderer) renderManager.getRenderer(player);
-        MultiBufferSource buffer = Minecraft.getInstance().renderBuffers().bufferSource();
-        // int oldId = RenderSystem.getShaderTexture(0);
-        // RenderSystem.setShaderTexture(0, player.getSkinTextureLocation());
+        AvatarRenderer<AbstractClientPlayer> renderer = renderManager.getPlayerRenderer(player);
+        Identifier skinTexture = player.getSkin().body().texturePath();
+        boolean sleeveVisible = player.isModelPartShown(hand == HumanoidArm.RIGHT ? PlayerModelPart.RIGHT_SLEEVE : PlayerModelPart.LEFT_SLEEVE);
 
-		if (ARCompat.shouldAccelerate()) {
-			ARCompat.setRenderingLevel();
-		}
-
-        if (hand == HumanoidArm.RIGHT) {
-            renderer.renderRightHand(matrixStack, buffer, combinedLight, player);
-        } else {
-            renderer.renderLeftHand(matrixStack, buffer, combinedLight, player);
+        boolean accelerated = ARCompat.shouldAccelerate();
+        if (accelerated) {
+            ARCompat.setRenderingLevel();
         }
-
-		if (ARCompat.shouldAccelerate()) {
-			ARCompat.resetRenderingLevel();
-		}
-
-        // RenderSystem.setShaderTexture(0, oldId);
+        try {
+            if (hand == HumanoidArm.RIGHT) {
+                renderer.renderRightHand(matrixStack, submitNodeCollector, combinedLight, skinTexture, sleeveVisible, player);
+            } else {
+                renderer.renderLeftHand(matrixStack, submitNodeCollector, combinedLight, skinTexture, sleeveVisible, player);
+            }
+        } finally {
+            if (accelerated) {
+                ARCompat.resetRenderingLevel();
+            }
+        }
     }
 }

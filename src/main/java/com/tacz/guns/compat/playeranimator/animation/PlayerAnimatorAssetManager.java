@@ -7,7 +7,7 @@ import dev.kosmx.playerAnim.core.data.KeyframeAnimation;
 import dev.kosmx.playerAnim.core.data.gson.AnimationSerializing;
 import dev.kosmx.playerAnim.minecraftApi.PlayerAnimationRegistry;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -18,11 +18,11 @@ import java.io.InputStream;
 import java.io.Reader;
 import java.util.*;
 
-public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<Map<ResourceLocation, HashMap<String, KeyframeAnimation>>> {
+public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<Map<Identifier, HashMap<String, KeyframeAnimation>>> {
     private static PlayerAnimatorAssetManager INSTANCE;
 
     private final FileToIdConverter filetoidconverter = new FileToIdConverter("player_animator", ".json");
-    private final HashMap<ResourceLocation, HashMap<String, KeyframeAnimation>> animations = new HashMap<>();
+    private final HashMap<Identifier, HashMap<String, KeyframeAnimation>> animations = new HashMap<>();
 
     public static PlayerAnimatorAssetManager get() {
         if (INSTANCE == null) {
@@ -31,7 +31,7 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
         return INSTANCE;
     }
 
-    void putAnimation(ResourceLocation id, InputStream stream) throws IOException {
+    void putAnimation(Identifier id, InputStream stream) throws IOException {
         List<KeyframeAnimation> keyframeAnimations = AnimationSerializing.deserializeAnimation(stream);
         for (var animation : keyframeAnimations) {
             if (animation.extraData.get("name") instanceof String text) {
@@ -41,7 +41,7 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
         }
     }
 
-    Optional<KeyframeAnimation> getAnimations(ResourceLocation id, String name) {
+    Optional<KeyframeAnimation> getAnimations(Identifier id, String name) {
         var animationHashMap = this.animations.get(id);
         if (animationHashMap == null) {
             return Optional.empty();
@@ -49,7 +49,7 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
         return Optional.ofNullable(animationHashMap.get(name));
     }
 
-    public boolean containsKey(ResourceLocation id) {
+    public boolean containsKey(Identifier id) {
         return animations.containsKey(id);
     }
 
@@ -58,11 +58,11 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
     }
 
     @Override
-    protected Map<ResourceLocation, HashMap<String, KeyframeAnimation>> prepare(ResourceManager manager, ProfilerFiller profiler) {
-        Map<ResourceLocation, HashMap<String, KeyframeAnimation>> output = Maps.newHashMap();
-        for(Map.Entry<ResourceLocation, Resource> entry : filetoidconverter.listMatchingResources(manager).entrySet()) {
-            ResourceLocation resourcelocation = entry.getKey();
-            ResourceLocation resourcelocation1 = filetoidconverter.fileToId(resourcelocation);
+    protected Map<Identifier, HashMap<String, KeyframeAnimation>> prepare(ResourceManager manager, ProfilerFiller profiler) {
+        Map<Identifier, HashMap<String, KeyframeAnimation>> output = Maps.newHashMap();
+        for(Map.Entry<Identifier, Resource> entry : filetoidconverter.listMatchingResources(manager).entrySet()) {
+            Identifier resourcelocation = entry.getKey();
+            Identifier resourcelocation1 = filetoidconverter.fileToId(resourcelocation);
 
             try (Reader reader = entry.getValue().openAsReader()) {
                 List<KeyframeAnimation> keyframeAnimations = AnimationSerializing.deserializeAnimation(reader);
@@ -80,7 +80,7 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
     }
 
     @Override
-    protected void apply(Map<ResourceLocation, HashMap<String, KeyframeAnimation>> map, ResourceManager manager, ProfilerFiller profiler) {
+    protected void apply(Map<Identifier, HashMap<String, KeyframeAnimation>> map, ResourceManager manager, ProfilerFiller profiler) {
         animations.clear();
         animations.putAll(map);
     }

@@ -8,7 +8,7 @@ import com.tacz.guns.client.resource.ClientAssetsManager;
 import com.tacz.guns.client.resource.pojo.animation.gltf.RawAnimationStructure;
 import com.tacz.guns.resource.manager.LazyJsonDataManager;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 
@@ -26,7 +26,7 @@ public class GltfManager extends LazyJsonDataManager<AnimationStructure> {
         return rawStructure == null ? null : new AnimationStructure(rawStructure);
     }
 
-    public AnimationStructure getGltfAnimation(ResourceLocation id) {
+    public AnimationStructure getGltfAnimation(Identifier id) {
         return getData(id);
     }
 }

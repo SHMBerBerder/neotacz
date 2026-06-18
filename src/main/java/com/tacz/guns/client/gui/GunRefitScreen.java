@@ -1,5 +1,7 @@
 package com.tacz.guns.client.gui;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator;
@@ -18,23 +20,23 @@ import com.tacz.guns.network.message.ClientMessageRefitGun;
 import com.tacz.guns.network.message.ClientMessageUnloadAttachment;
 import com.tacz.guns.sound.SoundManager;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.common.Mod;
 import org.jetbrains.annotations.NotNull;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class GunRefitScreen extends Screen {
-    public static final ResourceLocation SLOT_TEXTURE = new ResourceLocation(GunMod.MOD_ID, "textures/gui/refit_slot.png");
-    public static final ResourceLocation TURN_PAGE_TEXTURE = new ResourceLocation(GunMod.MOD_ID, "textures/gui/refit_turn_page.png");
-    public static final ResourceLocation UNLOAD_TEXTURE = new ResourceLocation(GunMod.MOD_ID, "textures/gui/refit_unload.png");
-    public static final ResourceLocation ICONS_TEXTURE = new ResourceLocation(GunMod.MOD_ID, "textures/gui/refit_slot_icons.png");
+    public static final Identifier SLOT_TEXTURE = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "textures/gui/refit_slot.png");
+    public static final Identifier TURN_PAGE_TEXTURE = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "textures/gui/refit_turn_page.png");
+    public static final Identifier UNLOAD_TEXTURE = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "textures/gui/refit_unload.png");
+    public static final Identifier ICONS_TEXTURE = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "textures/gui/refit_slot_icons.png");
 
     public static final int ICON_UV_SIZE = 32;
     public static final int SLOT_SIZE = 18;
@@ -110,17 +112,27 @@ public class GunRefitScreen extends Screen {
     }
 
     @Override
-    public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float pPartialTick) {
-        super.render(graphics, mouseX, mouseY, pPartialTick);
+    public void extractBackground(@NotNull GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        // The refit preview is the live first-person gun model; do not draw a menu backdrop over it.
+    }
+
+    @Override
+    public boolean isInGameUi() {
+        return true;
+    }
+
+    @Override
+    public void extractRenderState(@NotNull GuiGraphicsExtractor graphics, int mouseX, int mouseY, float pPartialTick) {
+        super.extractRenderState(graphics, mouseX, mouseY, pPartialTick);
 
         if (!HIDE_GUN_PROPERTY_DIAGRAMS) {
             GunPropertyDiagrams.draw(graphics, font, 11, 11);
         }
 
         this.renderables.stream().filter(w -> w instanceof IComponentTooltip).forEach(w -> ((IComponentTooltip) w)
-                .renderTooltip(component -> graphics.renderComponentTooltip(font, component, mouseX, mouseY)));
+                .renderTooltip(component -> graphics.setComponentTooltipForNextFrame(font, component, mouseX, mouseY)));
         this.renderables.stream().filter(w -> w instanceof IStackTooltip).forEach(w -> ((IStackTooltip) w)
-                .renderTooltip(stack -> graphics.renderTooltip(font, stack, mouseX, mouseY)));
+                .renderTooltip(stack -> graphics.setTooltipForNextFrame(font, stack, mouseX, mouseY)));
     }
 
     @Override
@@ -157,7 +169,7 @@ public class GunRefitScreen extends Screen {
                 InventoryAttachmentSlot button = new InventoryAttachmentSlot(startX, currentY, i, inventory, b -> {
                     int slotIndex = ((InventoryAttachmentSlot) b).getSlotIndex();
                     SoundPlayManager.playerRefitSound(inventory.getItem(slotIndex), player, SoundManager.INSTALL_SOUND);
-                    ClientMessageRefitGun message = new ClientMessageRefitGun(slotIndex, inventory.selected, RefitTransform.getCurrentTransformType());
+                    ClientMessageRefitGun message = new ClientMessageRefitGun(slotIndex, inventory.getSelectedSlot(), RefitTransform.getCurrentTransformType());
                     NetworkHandler.CHANNEL.sendToServer(message);
                 });
                 this.addRenderableWidget(button);
@@ -205,14 +217,14 @@ public class GunRefitScreen extends Screen {
                             .ifPresent(laserConfig -> {
                                 if (laserConfig.canEdit()) {
                                     // 添加镭射颜色选择器
-                                    HSVSliderGroup hsvSliderGroup = new HSVSliderGroup(width-140, height-64, 120, 16, inventory, inventory.selected, AttachmentType.NONE);
+                                    HSVSliderGroup hsvSliderGroup = new HSVSliderGroup(width-140, height-64, 120, 16, inventory, inventory.getSelectedSlot(), AttachmentType.NONE);
                                     this.addRenderableWidget(hsvSliderGroup.getHueSlider());
                                     this.addRenderableWidget(hsvSliderGroup.getSaturationSlider());
                                 }});
                 }
                 continue;
             }
-            GunAttachmentSlot button = new GunAttachmentSlot(startX, startY, type, inventory.selected, inventory, b -> {
+            GunAttachmentSlot button = new GunAttachmentSlot(startX, startY, type, inventory.getSelectedSlot(), inventory, b -> {
                 AttachmentType buttonType = ((GunAttachmentSlot) b).getType();
                 // 如果这个槽位不允许安装配件，则默认退回概览，不选中槽位。
                 if (!((GunAttachmentSlot) b).isAllow()) {
@@ -239,10 +251,10 @@ public class GunRefitScreen extends Screen {
                 RefitUnloadButton unloadButton = new RefitUnloadButton(startX + 5, startY + SLOT_SIZE + 2, b -> {
                     ItemStack attachmentItem = button.getAttachmentItem();
                     if (!attachmentItem.isEmpty()) {
-                        int freeSlot = inventory.getFreeSlot();
-                        if (freeSlot != -1) {
-                            SoundPlayManager.playerRefitSound(attachmentItem, player, SoundManager.UNINSTALL_SOUND);
-                            ClientMessageUnloadAttachment message = new ClientMessageUnloadAttachment(inventory.selected, RefitTransform.getCurrentTransformType());
+                            int freeSlot = inventory.getFreeSlot();
+                            if (freeSlot != -1) {
+                                SoundPlayManager.playerRefitSound(attachmentItem, player, SoundManager.UNINSTALL_SOUND);
+                            ClientMessageUnloadAttachment message = new ClientMessageUnloadAttachment(inventory.getSelectedSlot(), RefitTransform.getCurrentTransformType());
                             NetworkHandler.CHANNEL.sendToServer(message);
                         } else {
                             player.sendSystemMessage(Component.translatable("gui.tacz.gun_refit.unload.no_space"));
@@ -258,7 +270,7 @@ public class GunRefitScreen extends Screen {
                                 .ifPresent(laserConfig -> {
                                     if (laserConfig.canEdit()) {
                                         // 添加镭射颜色选择器
-                                        HSVSliderGroup hsvSliderGroup = new HSVSliderGroup(width-140, height-64, 120, 16, inventory, inventory.selected, type);
+                                        HSVSliderGroup hsvSliderGroup = new HSVSliderGroup(width-140, height-64, 120, 16, inventory, inventory.getSelectedSlot(), type);
                                         this.addRenderableWidget(hsvSliderGroup.getHueSlider());
                                         this.addRenderableWidget(hsvSliderGroup.getSaturationSlider());
                                     }});
@@ -277,7 +289,7 @@ public class GunRefitScreen extends Screen {
         if (player != null) {
             ItemStack gun = player.getMainHandItem();
             if (player.getMainHandItem().getItem() instanceof IGun) {
-                ClientMessageLaserColor message = new ClientMessageLaserColor(gun, player.getInventory().selected);
+                ClientMessageLaserColor message = new ClientMessageLaserColor(gun, player.getInventory().getSelectedSlot());
                 NetworkHandler.CHANNEL.sendToServer(message);
             }
         }

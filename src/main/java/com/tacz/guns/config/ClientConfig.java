@@ -1,11 +1,11 @@
 package com.tacz.guns.config;
 
 import com.tacz.guns.config.client.*;
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class ClientConfig {
-    public static ForgeConfigSpec init() {
-        ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
+    public static ModConfigSpec init() {
+        ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
         KeyConfig.init(builder);
         RenderConfig.init(builder);
         ResourceConfig.init(builder);

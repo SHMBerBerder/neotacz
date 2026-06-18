@@ -8,9 +8,10 @@ import com.tacz.guns.client.input.InteractKey;
 import com.tacz.guns.config.client.RenderConfig;
 import com.tacz.guns.config.util.InteractKeyConfigRead;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -21,17 +22,18 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
-import net.minecraftforge.client.gui.overlay.ForgeGui;
-import net.minecraftforge.client.gui.overlay.IGuiOverlay;
+import net.neoforged.neoforge.client.gui.GuiLayer;
 import org.apache.commons.lang3.StringUtils;
 
-public class InteractKeyTextOverlay implements IGuiOverlay {
+public class InteractKeyTextOverlay implements GuiLayer {
 
     @Override
-    public void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int width, int height) {
+    public void render(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
         if (RenderConfig.DISABLE_INTERACT_HUD_TEXT.get()) {
             return;
         }
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null || player.isSpectator()) {
@@ -50,7 +52,7 @@ public class InteractKeyTextOverlay implements IGuiOverlay {
         }
     }
 
-    private static void renderBlockText(GuiGraphics graphics, int width, int height, BlockHitResult blockHitResult, LocalPlayer player, Minecraft mc) {
+    private static void renderBlockText(GuiGraphicsExtractor graphics, int width, int height, BlockHitResult blockHitResult, LocalPlayer player, Minecraft mc) {
         BlockPos blockPos = blockHitResult.getBlockPos();
         BlockState block = player.level().getBlockState(blockPos);
         if (InteractKeyConfigRead.canInteractBlock(block)) {
@@ -65,7 +67,7 @@ public class InteractKeyTextOverlay implements IGuiOverlay {
         }
     }
 
-    private static void renderEntityText(GuiGraphics graphics, int width, int height, EntityHitResult entityHitResult, Minecraft mc) {
+    private static void renderEntityText(GuiGraphicsExtractor graphics, int width, int height, EntityHitResult entityHitResult, Minecraft mc) {
         if (mc.player == null || !IGun.mainHandHoldGun(mc.player)) {
             return;
         }
@@ -84,12 +86,12 @@ public class InteractKeyTextOverlay implements IGuiOverlay {
         return item instanceof IGun || item instanceof IAttachment || item instanceof IAmmo;
     }
 
-    private static void renderText(GuiGraphics graphics, int width, int height, Font font, String keyName, boolean willFilterByHand) {
+    private static void renderText(GuiGraphicsExtractor graphics, int width, int height, Font font, String keyName, boolean willFilterByHand) {
         Component title = Component.translatable("gui.tacz.interact_key.text.desc", StringUtils.capitalize(keyName));
-        graphics.drawString(font, title, (int) ((width - font.width(title)) / 2.0f), (int) (height / 2.0f - 25), ChatFormatting.YELLOW.getColor(), false);
+        graphics.text(font, title, (int) ((width - font.width(title)) / 2.0f), (int) (height / 2.0f - 25), 0xFFFF55, false);
         if (willFilterByHand) {
             Component filter = Component.translatable("gui.tacz.interact_key.text.gun_smith_table_filter");
-            graphics.drawString(font, filter, (int) ((width - font.width(filter)) / 2.0f), (int) (height / 2.0f - 14), ChatFormatting.GRAY.getColor(), false);
+            graphics.text(font, filter, (int) ((width - font.width(filter)) / 2.0f), (int) (height / 2.0f - 14), 0xAAAAAA, false);
         }
     }
 }

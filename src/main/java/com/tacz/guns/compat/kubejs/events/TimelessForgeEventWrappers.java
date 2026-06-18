@@ -6,7 +6,7 @@ import com.tacz.guns.api.event.common.*;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
 import com.tacz.guns.entity.EntityKineticBullet;
 import com.tacz.guns.resource.modifier.AttachmentCacheProperty;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -14,8 +14,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraftforge.eventbus.api.Event;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.bus.api.Event;
+import net.neoforged.fml.LogicalSide;
 
 import javax.annotation.Nullable;
 
@@ -50,7 +50,7 @@ public interface TimelessForgeEventWrappers {
             return getForgeEvent().getAttacker();
         }
 
-        default ResourceLocation getGunId() {
+        default Identifier getGunId() {
             return getForgeEvent().getGunId();
         }
 
@@ -84,7 +84,7 @@ public interface TimelessForgeEventWrappers {
             getForgeEvent().setAttacker(attacker);
         }
 
-        default void setGunId(ResourceLocation gunId) {
+        default void setGunId(Identifier gunId) {
             getForgeEvent().setGunId(gunId);
         }
 
@@ -120,7 +120,7 @@ public interface TimelessForgeEventWrappers {
             return getForgeEvent().getAttacker();
         }
 
-        default ResourceLocation getGunId() {
+        default Identifier getGunId() {
             return getForgeEvent().getGunId();
         }
 
@@ -144,7 +144,7 @@ public interface TimelessForgeEventWrappers {
             return getForgeEvent().getLogicalSide();
         }
 
-        default ResourceLocation getGunDisplayId() {
+        default Identifier getGunDisplayId() {
             return getForgeEvent().getGunDisplayId();
         }
     }

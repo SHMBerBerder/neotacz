@@ -4,14 +4,11 @@ import com.tacz.guns.api.entity.ShootResult;
 import com.tacz.guns.client.gameplay.LocalPlayerDataHolder;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 
 /**
  * 客户端枪械操纵者
  * 目前仅用于 LocalPlayer
  */
-@OnlyIn(Dist.CLIENT)
 public interface IClientPlayerGunOperator {
     /**
      * LocalPlayer 通过 Mixin 的方式实现了这个接口

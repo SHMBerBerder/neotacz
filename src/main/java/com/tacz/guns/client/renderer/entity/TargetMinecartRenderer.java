@@ -1,37 +1,36 @@
 package com.tacz.guns.client.renderer.entity;
 
 import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.minecraft.MinecraftProfileTexture;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
+import com.tacz.guns.client.renderer.BedrockSubmitUtils;
 import com.tacz.guns.client.resource.InternalAssetLoader;
 import com.tacz.guns.entity.TargetMinecart;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.model.geom.ModelLayers;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.client.renderer.entity.MinecartRenderer;
-import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.core.UUIDUtil;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemDisplayContext;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-
 import java.util.Optional;
+import net.minecraft.client.model.geom.ModelLayers;
+import net.minecraft.client.renderer.PlayerSkinRenderCache;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.block.BlockModelRenderState;
+import net.minecraft.client.renderer.entity.AbstractMinecartRenderer;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.MinecartRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.world.item.ItemDisplayContext;
+import org.jetbrains.annotations.Nullable;
 
-@OnlyIn(Dist.CLIENT)
-public class TargetMinecartRenderer extends MinecartRenderer<TargetMinecart> {
+public class TargetMinecartRenderer extends AbstractMinecartRenderer<TargetMinecart, TargetMinecartRenderer.TargetMinecartRenderState> {
     private static final String HEAD_NAME = "head";
     private static final String HEAD_2_NAME = "head2";
 
+    private final PlayerSkinRenderCache playerSkinRenderCache;
+
     public TargetMinecartRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, ModelLayers.TNT_MINECART);
+        this.playerSkinRenderCache = ctx.getPlayerSkinRenderCache();
         this.shadowRadius = 0.25F;
     }
 
@@ -40,45 +39,74 @@ public class TargetMinecartRenderer extends MinecartRenderer<TargetMinecart> {
     }
 
     @Override
-    public ResourceLocation getTextureLocation(TargetMinecart minecart) {
-        return InternalAssetLoader.ENTITY_EMPTY_TEXTURE;
+    public TargetMinecartRenderState createRenderState() {
+        return new TargetMinecartRenderState();
     }
 
     @Override
-    protected void renderMinecartContents(TargetMinecart targetMinecart, float pPartialTicks, BlockState pState, PoseStack stack, MultiBufferSource buffer, int pPackedLight) {
+    public void extractRenderState(TargetMinecart entity, TargetMinecartRenderState state, float partialTicks) {
+        super.extractRenderState(entity, state, partialTicks);
+        state.gameProfile = entity.getGameProfile();
+    }
+
+    @Override
+    protected void submitMinecartContents(TargetMinecartRenderState state, BlockModelRenderState blockModel, PoseStack stack,
+                                          SubmitNodeCollector submitNodeCollector, int lightCoords) {
         getModel().ifPresent(model -> {
             BedrockPart headModel = model.getNode(HEAD_NAME);
             BedrockPart head2Model = model.getNode(HEAD_2_NAME);
-            headModel.visible = false;
-            head2Model.visible = false;
+            if (headModel == null || head2Model == null) {
+                return;
+            }
 
             stack.pushPose();
             stack.translate(0.5, 1.875, 0.5);
             stack.scale(1.5f, 1.5f, 1.5f);
             stack.mulPose(Axis.ZN.rotationDegrees(180));
             stack.mulPose(Axis.YN.rotationDegrees(90));
-            RenderType renderType = RenderType.entityTranslucent(InternalAssetLoader.TARGET_MINECART_TEXTURE_LOCATION);
-            model.render(stack, ItemDisplayContext.NONE, renderType, pPackedLight, OverlayTexture.NO_OVERLAY);
-            if (targetMinecart.getGameProfile() != null) {
-                stack.translate(0, 1, -4.5 / 16d);
-                Minecraft minecraft = Minecraft.getInstance();
-                GameProfile gameProfile = targetMinecart.getGameProfile();
-                var map = minecraft.getSkinManager().getInsecureSkinInformation(gameProfile);
-                ResourceLocation skin;
-                if (map.containsKey(MinecraftProfileTexture.Type.SKIN)) {
-                    skin = minecraft.getSkinManager().registerTexture(map.get(MinecraftProfileTexture.Type.SKIN), MinecraftProfileTexture.Type.SKIN);
-                } else {
-                    skin = DefaultPlayerSkin.getDefaultSkin(UUIDUtil.getOrCreatePlayerUUID(gameProfile));
+            RenderType renderType = RenderTypes.entityTranslucent(InternalAssetLoader.TARGET_MINECART_TEXTURE_LOCATION);
+            submitNodeCollector.submitCustomGeometry(stack, renderType, (pose, buffer) -> {
+                PoseStack callbackPoseStack = BedrockSubmitUtils.fromPose(pose);
+                boolean headVisible = headModel.visible;
+                boolean head2Visible = head2Model.visible;
+                try {
+                    headModel.visible = false;
+                    head2Model.visible = false;
+                    model.renderToBuffer(callbackPoseStack, ItemDisplayContext.NONE, buffer, lightCoords, OverlayTexture.NO_OVERLAY);
+                } finally {
+                    headModel.visible = headVisible;
+                    head2Model.visible = head2Visible;
                 }
-                headModel.visible = true;
-                RenderType skullRenderType = RenderType.entityTranslucentCull(skin);
-                headModel.render(stack, ItemDisplayContext.NONE, buffer.getBuffer(skullRenderType), pPackedLight, OverlayTexture.NO_OVERLAY);
+            });
 
-                head2Model.visible = true;
+            if (state.gameProfile != null) {
+                RenderType skullRenderType = this.playerSkinRenderCache
+                        .getOrDefault(BedrockSubmitUtils.toResolvableProfile(state.gameProfile))
+                        .renderType();
+                stack.translate(0, 1, -4.5 / 16d);
+                submitVisiblePart(submitNodeCollector, stack, skullRenderType, headModel, lightCoords);
                 stack.translate(0, 0, 0.01);
-                head2Model.render(stack, ItemDisplayContext.NONE, buffer.getBuffer(skullRenderType), pPackedLight, OverlayTexture.NO_OVERLAY);
+                submitVisiblePart(submitNodeCollector, stack, skullRenderType, head2Model, lightCoords);
             }
             stack.popPose();
         });
+    }
+
+    private static void submitVisiblePart(SubmitNodeCollector submitNodeCollector, PoseStack stack, RenderType renderType,
+                                          BedrockPart part, int lightCoords) {
+        submitNodeCollector.submitCustomGeometry(stack, renderType, (pose, buffer) -> {
+            PoseStack callbackPoseStack = BedrockSubmitUtils.fromPose(pose);
+            boolean visible = part.visible;
+            try {
+                part.visible = true;
+                part.render(callbackPoseStack, ItemDisplayContext.NONE, buffer, lightCoords, OverlayTexture.NO_OVERLAY);
+            } finally {
+                part.visible = visible;
+            }
+        });
+    }
+
+    public static class TargetMinecartRenderState extends MinecartRenderState {
+        @Nullable GameProfile gameProfile;
     }
 }

@@ -5,6 +5,7 @@ import com.github.mcmodderanchor.simplebedrockmodel.v1.client.renderer.IFPGeoIte
 import com.maydaymemory.mae.basic.DummyPose;
 import com.maydaymemory.mae.basic.Pose;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.client.animation.statemachine.LuaAnimationStateMachine;
@@ -15,20 +16,20 @@ import com.tacz.guns.client.animation.statemachine.ItemAnimationStateContext;
 import com.tacz.guns.client.model.BedrockAnimatedModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import com.tacz.guns.client.sound.SoundPlayManager;
+import com.tacz.guns.util.RenderHelper;
 import com.tacz.guns.util.math.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.client.event.ViewportEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -44,14 +45,13 @@ import java.util.List;
  * @param <CTX> 动画状态机上下文
  */
 public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX extends ItemAnimationStateContext>
-        extends BlockEntityWithoutLevelRenderer implements IFPGeoItemRenderer {
+        implements IFPGeoItemRenderer {
     @Nullable
     protected LuaAnimationStateMachine<CTX> stateMachine;
     protected M model;
-    public ResourceLocation textureLocation;
+    public Identifier textureLocation;
 
     public AnimateGeoItemRenderer() {
-        super(Minecraft.getInstance().getBlockEntityRenderDispatcher(), Minecraft.getInstance().getEntityModels());
     }
 
     public void setModel(M model) {
@@ -67,12 +67,12 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
         return stateMachine;
     }
 
-    public ResourceLocation getTextureLocation(ItemStack stack) {
+    public Identifier getTextureLocation(ItemStack stack) {
         return textureLocation;
     }
 
     public RenderType getRenderType(ItemStack stack) {
-        return RenderType.entityCutout(getTextureLocation(stack));
+        return RenderTypes.entityCutout(getTextureLocation(stack));
     }
 
     public boolean needReInit(ItemStack stack) {
@@ -211,26 +211,14 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
     /**
      * 渲染第一人称，暂时只用于玩家，入口参见 {@link com.tacz.guns.client.event.FirstPersonRenderEvent}
      */
-    public void renderFirstPerson(LocalPlayer player, ItemStack stack, ItemDisplayContext ctx, PoseStack poseStack, MultiBufferSource bufferSource,
+    public void renderFirstPerson(LocalPlayer player, ItemStack stack, ItemDisplayContext ctx, PoseStack poseStack, SubmitNodeCollector submitNodeCollector,
                                   int light, float partialTick) {
         M model = getModel(stack);
         if (model != null) {
             poseStack.pushPose();
-            float xRotOffset = Mth.lerp(partialTick, player.xBobO, player.xBob);
-            float yRotOffset = Mth.lerp(partialTick, player.yBobO, player.yBob);
-            float xRot = player.getViewXRot(partialTick) - xRotOffset;
-            float yRot = player.getViewYRot(partialTick) - yRotOffset;
-            poseStack.mulPose(Axis.XP.rotationDegrees(xRot * -0.1F));
-            poseStack.mulPose(Axis.YP.rotationDegrees(yRot * -0.1F));
+            FirstPersonHandSway handSway = FirstPersonHandSway.capture(player, partialTick);
+            handSway.cancelVanillaHandDelay(poseStack);
             BedrockPart rootNode = model.getRootNode();
-            if (rootNode != null) {
-                xRot = (float) Math.tanh(xRot / 25) * 25;
-                yRot = (float) Math.tanh(yRot / 25) * 25;
-                rootNode.offsetX += yRot * 0.1F / 16F / 3F;
-                rootNode.offsetY += -xRot * 0.1F / 16F / 3F;
-                rootNode.additionalQuaternion.mul(Axis.XP.rotationDegrees(xRot * 0.05F));
-                rootNode.additionalQuaternion.mul(Axis.YP.rotationDegrees(yRot * 0.05F));
-            }
 
             // 从渲染原点 (0, 24, 0) 移动到模型原点 (0, 0, 0)
             poseStack.translate(0, 1.5f, 0);
@@ -246,29 +234,19 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
                 stateMachine.update();
             }
 
-            model.render(poseStack, ctx, getRenderType(stack), light, OverlayTexture.NO_OVERLAY);
+            handSway.withTemporaryModelSway(rootNode, () -> RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
+                    RenderHelper.withDeferredFunctionalRendererCollection(() ->
+                            model.collectDeferredFunctionalRenderers(poseStack, ctx, light, OverlayTexture.NO_OVERLAY))));
+            submitModelGeometry(submitNodeCollector, poseStack, getRenderType(stack), (callbackPoseStack, buffer) -> {
+                try {
+                    handSway.applyTo(rootNode);
+                    RenderHelper.withDeferredRenderersSuppressed(() ->
+                            model.renderToBuffer(callbackPoseStack, ctx, buffer, light, OverlayTexture.NO_OVERLAY));
+                } finally {
+                    model.cleanAnimationTransform();
+                }
+            });
 
-            // 渲染结束后清除动画变换
-            model.cleanAnimationTransform();
-            poseStack.popPose();
-        }
-    }
-
-    @ParametersAreNonnullByDefault
-    @Override
-    public void renderByItem(ItemStack stack, ItemDisplayContext ctx, PoseStack poseStack, MultiBufferSource bufferSource,
-                             int light, int overlay) {
-        if (ctx.firstPerson()) return;
-        M model = getModel(stack);
-        if (model != null) {
-            poseStack.pushPose();
-            // 从渲染原点 (0, 24, 0) 移动到模型原点 (0, 0, 0)
-            poseStack.translate(0.5, 1.5f, 0.5);
-            // 基岩版模型是上下颠倒的，需要翻转过来。
-            poseStack.mulPose(Axis.ZP.rotationDegrees(180f));
-            model.render(poseStack, ctx, RenderType.entityCutout(
-                    getTextureLocation(stack)
-            ), light, overlay);
             poseStack.popPose();
         }
     }
@@ -311,7 +289,7 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
 
         // 应用变换到 PoseStack
         poseStack.translate(0, 1.5f, 0);
-        poseStack.mulPoseMatrix(transformMatrix);
+        poseStack.mulPose(transformMatrix);
         poseStack.translate(0, -1.5f, 0);
     }
 
@@ -397,5 +375,20 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
     @Override
     public boolean blockOffhandRender() {
         return true;
+    }
+
+    protected static void submitModelGeometry(SubmitNodeCollector submitNodeCollector, PoseStack poseStack, RenderType renderType,
+                                              GeometryRenderer renderer) {
+        RenderHelper.submitCustomGeometry(submitNodeCollector, poseStack, renderType, (pose, buffer) -> {
+            PoseStack callbackPoseStack = new PoseStack();
+            callbackPoseStack.last().pose().set(pose.pose());
+            callbackPoseStack.last().normal().set(pose.normal());
+            renderer.render(callbackPoseStack, buffer);
+        });
+    }
+
+    @FunctionalInterface
+    protected interface GeometryRenderer {
+        void render(PoseStack poseStack, VertexConsumer buffer);
     }
 }

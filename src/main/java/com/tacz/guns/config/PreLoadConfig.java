@@ -1,43 +1,72 @@
 package com.tacz.guns.config;
 
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
-import net.minecraftforge.common.ForgeConfigSpec;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.config.ConfigTracker;
-import net.minecraftforge.fml.config.IConfigEvent;
-import net.minecraftforge.fml.config.ModConfig;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.nio.file.Path;
+import java.util.function.BooleanSupplier;
 
 public class PreLoadConfig {
-    private static ForgeConfigSpec spec;
-    public static ForgeConfigSpec.BooleanValue override;
+    private static final Logger LOGGER = LogManager.getLogger("tacz");
+    private static final String KEY = "gunpack.DefaultPackDebug";
+    private static final boolean DEFAULT_VALUE = false;
+    public static final PreloadBooleanValue override = new PreloadBooleanValue();
 
-    static {
-        ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
-        builder.push("gunpack");
-        builder.comment("When enabled, the mod will not try to overwrite the default pack under .minecraft/tacz\n" +
-                "Since 1.0.4, the overwriting will only run when you start client or a dedicated server");
-        override = builder.define("DefaultPackDebug", false);
-        builder.pop();
-        spec = builder.build();
+    private static boolean loaded;
+    private static boolean value = DEFAULT_VALUE;
+    private static Path configPath;
+
+    public static synchronized void load(Path configBasePath) {
+        Path resolvedConfigPath = configBasePath.resolve("tacz-pre.toml");
+        if (loaded && resolvedConfigPath.equals(configPath)) return;
+        try (CommentedFileConfig config = CommentedFileConfig.builder(resolvedConfigPath).sync().autosave().build()) {
+            config.load();
+            if (!config.contains(KEY)) {
+                config.set(KEY, DEFAULT_VALUE);
+                config.save();
+            }
+            value = config.getOrElse(KEY, DEFAULT_VALUE);
+            configPath = resolvedConfigPath;
+            loaded = true;
+        }
     }
 
-    public static PreLoadModConfig getModConfig() {
-        ModLoadingContext ctx = ModLoadingContext.get();
-        var c = new PreLoadModConfig(ModConfig.Type.COMMON, spec, ctx.getActiveContainer(), "tacz-pre.toml");
-        // 从 ConfigTracker 中移除，防止从默认文件夹重复加载
-        ConfigTracker.INSTANCE.configSets().get(ModConfig.Type.COMMON).remove(c);
-        ConfigTracker.INSTANCE.fileMap().remove(c.getFileName(), c);
-        return c;
+    private static synchronized boolean getOverride() {
+        return value;
     }
 
-    public static void load(Path configBasePath) {
-        if (spec.isLoaded()) return;
-        PreLoadModConfig config = getModConfig();
-        final CommentedFileConfig configData = config.getHandler().reader(configBasePath).apply(config);
-        config.setConfigData(configData);
-        config.fireEvent(IConfigEvent.loading(config));
-        config.save();
+    private static synchronized void setOverride(boolean newValue) {
+        value = newValue;
+        if (configPath == null) return;
+        try (CommentedFileConfig config = CommentedFileConfig.builder(configPath).sync().autosave().build()) {
+            config.load();
+            config.set(KEY, newValue);
+            config.save();
+        } catch (RuntimeException e) {
+            LOGGER.warn("Failed to save pre-load config {}", configPath, e);
+        }
+    }
+
+    public static final class PreloadBooleanValue implements BooleanSupplier {
+        private PreloadBooleanValue() {
+        }
+
+        public Boolean get() {
+            return getOverride();
+        }
+
+        @Override
+        public boolean getAsBoolean() {
+            return getOverride();
+        }
+
+        public void set(boolean value) {
+            setOverride(value);
+        }
+
+        public void set(Boolean value) {
+            setOverride(Boolean.TRUE.equals(value));
+        }
     }
 }

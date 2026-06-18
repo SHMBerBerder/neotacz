@@ -3,6 +3,7 @@ package com.tacz.guns.crafting.result;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.attachment.AttachmentType;
+import com.tacz.guns.api.item.nbt.ItemStackNbtHelper;
 import com.tacz.guns.api.item.builder.AmmoItemBuilder;
 import com.tacz.guns.api.item.builder.AttachmentItemBuilder;
 import com.tacz.guns.api.item.builder.GunItemBuilder;
@@ -10,7 +11,7 @@ import com.tacz.guns.resource.pojo.data.block.TabConfig;
 import com.tacz.guns.resource.pojo.data.recipe.GunResult;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -26,13 +27,13 @@ import java.util.Locale;
 public class RawGunTableResult {
     private final String type;
     private final int count;
-    private final ResourceLocation id;
+    private final Identifier id;
     @Nullable
     private GunResult extraData;
     @Nullable
     private CompoundTag nbt;
 
-    public RawGunTableResult(@NotNull String type, @NotNull ResourceLocation id, int count) {
+    public RawGunTableResult(@NotNull String type, @NotNull Identifier id, int count) {
         this.type = type;
         this.id = id;
         this.count = count;
@@ -54,20 +55,21 @@ public class RawGunTableResult {
             default -> new GunSmithTableResult(ItemStack.EMPTY, TabConfig.TAB_EMPTY);
         };
         if (raw.nbt != null) {
-            CompoundTag itemTag = result.getResult().getOrCreateTag();
-            for (String key : raw.nbt.getAllKeys()) {
-                Tag tag = raw.nbt.get(key);
-                if (tag != null) {
-                    itemTag.put(key, tag);
+            ItemStackNbtHelper.updateTag(result.getResult(), itemTag -> {
+                for (String key : raw.nbt.keySet()) {
+                    Tag tag = raw.nbt.get(key);
+                    if (tag != null) {
+                        itemTag.put(key, tag);
+                    }
                 }
-            }
+            });
         }
         return result;
     }
 
     private GunSmithTableResult getGunStack() {
         int ammoCount;
-        EnumMap<AttachmentType, ResourceLocation> attachments;
+        EnumMap<AttachmentType, Identifier> attachments;
         if (extraData != null) {
             ammoCount = Math.max(0, extraData.getAmmoCount());
             attachments = extraData.getAttachments();
@@ -88,7 +90,7 @@ public class RawGunTableResult {
             if (!raw.contains(":")) {
                 raw = GunMod.MOD_ID + ":" + raw;
             }
-            ResourceLocation group = ResourceLocation.tryParse(raw);
+            Identifier group = Identifier.tryParse(raw);
             return new GunSmithTableResult(itemStack, group);
         }).orElse(new GunSmithTableResult(ItemStack.EMPTY, TabConfig.TAB_EMPTY));
     }
@@ -104,7 +106,7 @@ public class RawGunTableResult {
             if (!raw.contains(":")) {
                 raw = GunMod.MOD_ID + ":" + raw;
             }
-            ResourceLocation group = ResourceLocation.tryParse(raw);
+            Identifier group = Identifier.tryParse(raw);
             return new GunSmithTableResult(itemStack, group);
         }).orElse(new GunSmithTableResult(ItemStack.EMPTY, TabConfig.TAB_EMPTY));
     }

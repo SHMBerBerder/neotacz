@@ -1,12 +1,8 @@
 package com.tacz.guns.network.message;
 
-import com.tacz.guns.client.gui.GunSmithTableScreen;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
+import com.tacz.guns.network.NetworkContext;
+import com.tacz.guns.network.NetworkHandler;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
@@ -25,19 +21,11 @@ public class ServerMessageCraft {
         return new ServerMessageCraft(buf.readVarInt());
     }
 
-    public static void handle(ServerMessageCraft message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
-        if (context.getDirection().getReceptionSide().isClient()) {
-            context.enqueueWork(() -> updateScreen(message.menuId));
-        }
-        context.setPacketHandled(true);
+    public static void handle(ServerMessageCraft message, Supplier<NetworkContext> contextSupplier) {
+        NetworkHandler.handleClientboundMessage(message, contextSupplier);
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private static void updateScreen(int containerId) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player != null && player.containerMenu.containerId == containerId && Minecraft.getInstance().screen instanceof GunSmithTableScreen screen) {
-            screen.updateIngredientCount();
-        }
+    public int getMenuId() {
+        return menuId;
     }
 }

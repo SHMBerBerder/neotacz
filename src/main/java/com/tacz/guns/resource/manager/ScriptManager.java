@@ -5,7 +5,7 @@ import com.google.gson.JsonParseException;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.vmlib.LuaLibrary;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -47,7 +47,7 @@ public class ScriptManager extends SimplePreparableReloadListener< List<Map.Entr
         initGlobals();
         // 打包加载函数，设置 globals 的 preload
         List<Map.Entry<String, Supplier<LuaTable>>> output = new ArrayList<>();
-        for(Map.Entry<ResourceLocation, Resource> entry : filetoidconverter.listMatchingResources(pResourceManager).entrySet()) {
+        for(Map.Entry<Identifier, Resource> entry : filetoidconverter.listMatchingResources(pResourceManager).entrySet()) {
             var wrappedEntry = wrapLoadingFunction(entry.getKey(), entry.getValue());
             output.add(wrappedEntry);
             globals.get("package").get("preload").set(wrappedEntry.getKey(), new LuaFunction() {
@@ -66,8 +66,8 @@ public class ScriptManager extends SimplePreparableReloadListener< List<Map.Entr
         pObject.forEach(entry -> scriptMap.put(entry.getKey(), entry.getValue().get()));
     }
 
-    private Map.Entry<String, Supplier<LuaTable>> wrapLoadingFunction(ResourceLocation rawResourceLocation, Resource resource) {
-        ResourceLocation resourceLocation = filetoidconverter.fileToId(rawResourceLocation);
+    private Map.Entry<String, Supplier<LuaTable>> wrapLoadingFunction(Identifier rawResourceLocation, Resource resource) {
+        Identifier resourceLocation = filetoidconverter.fileToId(rawResourceLocation);
         String moduleName = getModuleName(resourceLocation);
         return new AbstractMap.SimpleEntry<>(moduleName, new Supplier<>() {
             private LuaTable loaded = null;
@@ -96,11 +96,11 @@ public class ScriptManager extends SimplePreparableReloadListener< List<Map.Entr
         }
     }
 
-    private String getModuleName(ResourceLocation resourceLocation) {
+    private String getModuleName(Identifier resourceLocation) {
         return resourceLocation.getNamespace() + "_" + resourceLocation.getPath();
     }
 
-    public LuaTable getScript(ResourceLocation id) {
+    public LuaTable getScript(Identifier id) {
         return scriptMap.get(getModuleName(id));
     }
 

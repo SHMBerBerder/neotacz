@@ -1,17 +1,18 @@
 package com.tacz.guns.compat.kubejs.util;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonElement;
+import com.tacz.guns.api.item.nbt.ItemStackNbtHelper;
 import com.tacz.guns.crafting.result.GunSmithTableResult;
-import dev.latvian.mods.kubejs.item.ItemStackJS;
-import dev.latvian.mods.kubejs.item.OutputItem;
-import dev.latvian.mods.kubejs.registry.RegistryInfo;
-import dev.latvian.mods.kubejs.util.JsonIO;
-import dev.latvian.mods.kubejs.util.UtilsJS;
+import com.tacz.guns.resource.serialize.ItemStackJsonHelper;
+import dev.latvian.mods.kubejs.plugin.builtin.wrapper.ItemWrapper;
+import dev.latvian.mods.kubejs.util.JsonUtils;
+import dev.latvian.mods.rhino.Context;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.common.crafting.CraftingHelper;
 
 public class GunSmithTableResultInfo {
     private static final String TYPE_KEY = "type";
@@ -41,10 +42,11 @@ public class GunSmithTableResultInfo {
     public static GunSmithTableResultInfo createFromItemStack(ItemStack stack) {
         GunSmithTableResultInfo info = create().setType(GunSmithTableResult.CUSTOM);
         JsonObject itemJson = new JsonObject();
-        itemJson.addProperty("item", RegistryInfo.ITEM.getId(stack.getItem()).toString());
+        itemJson.addProperty("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
         itemJson.addProperty("count", stack.getCount());
-        if (JsonIO.of(stack.getTag()) != null) {
-            itemJson.addProperty("nbt", stack.getOrCreateTag().toString());
+        CompoundTag tag = ItemStackNbtHelper.getTag(stack);
+        if (!tag.isEmpty()) {
+            itemJson.addProperty("nbt", tag.toString());
         }
         info.setCustomItem(itemJson);
         return info;
@@ -52,9 +54,8 @@ public class GunSmithTableResultInfo {
 
     /**
      * {@link GunSmithTableResultInfo}的TypeWrapper, 将其他类型转为{@link GunSmithTableResultInfo}
-     * object为其他类型时优先解析{@link JsonObject}，其次{@link OutputItem}，再其次{@link ItemStack}
-     * 之后尝试转化为{@link String}解析为{@link ResourceLocation}
-     * 以上均不成功时最终{@link JsonIO#of(Object)}解析
+     * object为其他类型时优先解析{@link JsonObject}，其次{@link ItemStack}
+     * 之后尝试转化为{@link String}解析为{@link Identifier}
      * @param object 输入待转化对象
      * @return {@link GunSmithTableResultInfo}
      */
@@ -63,25 +64,35 @@ public class GunSmithTableResultInfo {
             return info;
         } else if (object instanceof JsonObject jsonObject) {
             return createFromJson(jsonObject);
-        }else if (object instanceof OutputItem outputItem) {
-            return createFromItemStack(outputItem.item);
+        } else if (object instanceof JsonElement jsonElement && jsonElement.isJsonObject()) {
+            return createFromJson(jsonElement.getAsJsonObject());
         } else if (object instanceof ItemStack stack) {
             return createFromItemStack(stack);
         }
         String idString = object.toString();
-        if (ResourceLocation.isValidResourceLocation(idString)) {
-            ResourceLocation rl = UtilsJS.getMCID(null, idString);
+        if (Identifier.tryParse(idString) != null) {
+            Identifier rl = Identifier.parse(idString);
             TimelessItemWrapper.ItemIndexInfo indexInfo = TimelessItemWrapper.ItemIndexInfo.createFromResourceLocation(rl);
             if (indexInfo.isValidForRecipe()) {
                 return create().setType(indexInfo.getParent()).setId(indexInfo.getIndexId());
             }
         }
-        ItemStack stack = ItemStackJS.of(object);
+        throw new IllegalArgumentException("Cannot convert " + object + " to GunSmithTableResultInfo without KubeJS script context");
+    }
+
+    public static GunSmithTableResultInfo of(Context cx, Object object) {
+        if (object instanceof GunSmithTableResultInfo || object instanceof JsonObject || object instanceof JsonElement || object instanceof ItemStack) {
+            return of(object);
+        }
+        String idString = object.toString();
+        if (Identifier.tryParse(idString) != null) {
+            return of(idString);
+        }
+        ItemStack stack = ItemWrapper.wrapResult(cx, object).result().orElse(ItemStack.EMPTY);
         if (!stack.isEmpty()) {
             return createFromItemStack(stack);
         }
-        //以上都不匹配，默认按JsonObject处理
-        return createFromJson(JsonIO.of(object).getAsJsonObject());
+        return createFromJson(JsonUtils.objectOf(cx, object));
     }
 
     public String getType() {
@@ -93,17 +104,20 @@ public class GunSmithTableResultInfo {
         return this;
     }
 
-    public ResourceLocation getId() {
-        return ResourceLocation.tryParse(GsonHelper.getAsString(this.json, ID_KEY));
+    public Identifier getId() {
+        return Identifier.tryParse(GsonHelper.getAsString(this.json, ID_KEY));
     }
 
-    public GunSmithTableResultInfo setId(ResourceLocation id) {
+    public GunSmithTableResultInfo setId(Identifier id) {
         this.json.addProperty(ID_KEY, id.toString());
         return this;
     }
 
     public CompoundTag getNbt() {
-        return CraftingHelper.getNBT(this.json.get(NBT_KEY));
+        if (!this.json.has(NBT_KEY)) {
+            return new CompoundTag();
+        }
+        return ItemStackJsonHelper.getNbt(this.json.get(NBT_KEY));
     }
 
     public GunSmithTableResultInfo setNbt(CompoundTag nbt) {
@@ -112,7 +126,7 @@ public class GunSmithTableResultInfo {
     }
 
     public int getCount() {
-        return Math.max(GsonHelper.getAsInt(this.json, "count"), 1);
+        return this.json.has(COUNT_KEY) ? Math.max(GsonHelper.getAsInt(this.json, COUNT_KEY), 1) : 1;
     }
 
     public GunSmithTableResultInfo setCount(int count) {
@@ -121,7 +135,7 @@ public class GunSmithTableResultInfo {
     }
 
     public JsonObject getCustomItem() {
-        return GsonHelper.getAsJsonObject(this.json, CUSTOM_ITEM_KEY);
+        return this.json.has(CUSTOM_ITEM_KEY) ? GsonHelper.getAsJsonObject(this.json, CUSTOM_ITEM_KEY) : new JsonObject();
     }
 
     public GunSmithTableResultInfo setCustomItem(JsonObject itemJson) {

@@ -4,7 +4,7 @@ import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.util.TacPathVisitor;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
@@ -58,7 +58,7 @@ public abstract class JsonResourceLoader<T> {
                 return false;
             }
             try (InputStream stream = zipFile.getInputStream(entry)) {
-                ResourceLocation registryName = new ResourceLocation(namespace, path);
+                Identifier registryName = Identifier.fromNamespaceAndPath(namespace, path);
                 String json = IOUtils.toString(stream, StandardCharsets.UTF_8);
                 resolveJson(registryName, json);
                 return true;
@@ -91,5 +91,5 @@ public abstract class JsonResourceLoader<T> {
         }
     }
 
-    public abstract void resolveJson(ResourceLocation id, String json);
+    public abstract void resolveJson(Identifier id, String json);
 }

@@ -1,22 +1,22 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.resource.PackConvertor;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
 
 import java.io.File;
 
 
-@OnlyIn(Dist.CLIENT)
-@Mod.EventBusSubscriber(value = Dist.CLIENT)
+@EventBusSubscriber(value = Dist.CLIENT)
 public class PlayerEnterWorld {
 
     @SubscribeEvent
@@ -28,8 +28,8 @@ public class PlayerEnterWorld {
             Component component = Component.translatable("message.tacz.convert_from_legacy")
                     .append(Component.translatable("message.tacz.convert_from_legacy.button")
                             .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
-                            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tacz convert"))
-                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("message.tacz.convert_from_legacy.hover"))
+                            .withClickEvent(new ClickEvent.RunCommand("/tacz convert"))
+                            .withHoverEvent(new HoverEvent.ShowText(Component.translatable("message.tacz.convert_from_legacy.hover"))
             )));
             event.getEntity().sendSystemMessage(pre(component));
             event.getEntity().sendSystemMessage(pre(Component.translatable("message.tacz.convert_from_legacy.hint")));

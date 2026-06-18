@@ -5,7 +5,9 @@ import com.google.common.collect.Sets;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.tacz.guns.GunMod;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.fml.ModList;
+import net.neoforged.fml.jarcontents.JarContents;
+import net.neoforged.fml.loading.FMLPaths;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.comparator.LastModifiedFileComparator;
 import org.apache.commons.io.filefilter.TrueFileFilter;
@@ -23,6 +25,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -74,6 +77,10 @@ public final class GetJarResources {
         try {
             if (url != null) {
                 exportFolderIfChanged(resourceClass, srcPath, url, root, path);
+                return;
+            }
+            if (!exportModFileDirectoryIfChanged(resourceClass, srcPath, root, path)) {
+                GunMod.LOGGER.warn("Could not locate export resource {} for {}", srcPath, resourceClass.getName());
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -120,6 +127,63 @@ public final class GetJarResources {
         stateFile.version = EXPORT_STATE_VERSION;
         stateFile.entries.put(stateKey, sourceFingerprint);
         writeExportState(root, stateFile);
+    }
+
+    private static boolean exportModFileDirectoryIfChanged(Class<?> resourceClass, String srcPath, Path root, String path) throws IOException {
+        String normalizedSrcPath = normalizeModFileResourcePath(srcPath);
+        Optional<ModFileExportSource> source = findModFileExportSource(resourceClass, normalizedSrcPath);
+        if (source.isEmpty()) {
+            return false;
+        }
+
+        String stateKey = getExportStateKey(resourceClass, srcPath, path);
+        String sourceFingerprint = calculateModFileFingerprint(source.get().contents(), normalizedSrcPath);
+        ExportStateFile stateFile = readExportState(root);
+        Path targetPath = root.resolve(path);
+        String previousFingerprint = stateFile.entries.get(stateKey);
+        if (Files.isDirectory(targetPath) && sourceFingerprint.equals(previousFingerprint)) {
+            GunMod.LOGGER.debug("Skipping unchanged exported resource {}", targetPath);
+            return true;
+        }
+
+        GunMod.LOGGER.info("Exporting resource pack {} from mod file {} to {}", srcPath, source.get().fileName(), targetPath);
+        copyModFileFolder(source.get().contents(), normalizedSrcPath, targetPath);
+        stateFile.version = EXPORT_STATE_VERSION;
+        stateFile.entries.put(stateKey, sourceFingerprint);
+        writeExportState(root, stateFile);
+        return true;
+    }
+
+    private static Optional<ModFileExportSource> findModFileExportSource(Class<?> resourceClass, String normalizedSrcPath) {
+        ModList modList = ModList.get();
+        if (modList == null) {
+            return Optional.empty();
+        }
+
+        String classFilePath = resourceClass.getName().replace('.', '/') + ".class";
+        List<ModFileExportSource> classMatchedSources = modList.applyForEachModFileAlphabetical(modFile -> {
+            JarContents contents = modFile.getContents();
+            if (contents.containsFile(classFilePath) && containsResourcePrefix(contents, normalizedSrcPath)) {
+                return new ModFileExportSource(modFile.getFileName(), contents);
+            }
+            return null;
+        }).filter(Objects::nonNull).toList();
+
+        if (!classMatchedSources.isEmpty()) {
+            return Optional.of(classMatchedSources.get(0));
+        }
+
+        List<ModFileExportSource> pathMatchedSources = modList.applyForEachModFileAlphabetical(modFile -> {
+            JarContents contents = modFile.getContents();
+            if (containsResourcePrefix(contents, normalizedSrcPath)) {
+                return new ModFileExportSource(modFile.getFileName(), contents);
+            }
+            return null;
+        }).filter(Objects::nonNull).toList();
+        if (pathMatchedSources.size() > 1) {
+            GunMod.LOGGER.warn("Multiple mod files expose {}, using {}", normalizedSrcPath, pathMatchedSources.get(0).fileName());
+        }
+        return pathMatchedSources.isEmpty() ? Optional.empty() : Optional.of(pathMatchedSources.get(0));
     }
 
     private static String getExportStateKey(Class<?> resourceClass, String srcPath, String path) {
@@ -200,7 +264,76 @@ public final class GetJarResources {
         return lines;
     }
 
+    private static String calculateModFileFingerprint(JarContents contents, String normalizedSrcPath) throws IOException {
+        List<String> lines = collectModFileFingerprintLines(contents, normalizedSrcPath);
+        Collections.sort(lines);
+        return Md5Utils.md5Hex(String.join("\n", lines).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static List<String> collectModFileFingerprintLines(JarContents contents, String normalizedSrcPath) throws IOException {
+        String rootEntry = normalizeDirectoryEntryName(normalizedSrcPath);
+        List<String> lines = new ArrayList<>();
+        try {
+            contents.visitContent(rootEntry, (relativePath, resource) -> {
+                if (!relativePath.startsWith(rootEntry)) {
+                    return;
+                }
+                String path = relativePath.substring(rootEntry.length());
+                if (path.isEmpty()) {
+                    return;
+                }
+                try {
+                    var attributes = resource.attributes();
+                    lines.add(path + "|" + attributes.size() + "|" + attributes.lastModified().toMillis());
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            });
+        } catch (UncheckedIOException exception) {
+            throw exception.getCause();
+        }
+        return lines;
+    }
+
     private static void copyFolder(URL sourceUrl, Path targetPath) throws IOException {
+        prepareTargetFolder(targetPath);
+
+        if ("jar".equals(sourceUrl.getProtocol())) {
+            copyJarProtocolFolder(sourceUrl, targetPath);
+        } else {
+            copyPathBackedFolder(resolveSourcePath(sourceUrl), targetPath);
+        }
+    }
+
+    private static void copyModFileFolder(JarContents contents, String normalizedSrcPath, Path targetPath) throws IOException {
+        prepareTargetFolder(targetPath);
+        Files.createDirectories(targetPath);
+        String rootEntry = normalizeDirectoryEntryName(normalizedSrcPath);
+        try {
+            contents.visitContent(rootEntry, (relativePath, resource) -> {
+                if (!relativePath.startsWith(rootEntry)) {
+                    return;
+                }
+                String relative = relativePath.substring(rootEntry.length());
+                if (relative.isEmpty()) {
+                    return;
+                }
+                Path target = targetPath.resolve(relative);
+                try {
+                    Files.createDirectories(target.getParent());
+                    try (InputStream inputStream = resource.open()) {
+                        Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            });
+        } catch (UncheckedIOException exception) {
+            throw exception.getCause();
+        }
+    }
+
+    private static void prepareTargetFolder(Path targetPath) throws IOException {
         if (Files.isDirectory(targetPath)) {
             // 备份原文件夹
             backupFiles(targetPath);
@@ -208,12 +341,6 @@ public final class GetJarResources {
             deleteFiles(targetPath);
         } else if (Files.exists(targetPath)) {
             Files.delete(targetPath);
-        }
-
-        if ("jar".equals(sourceUrl.getProtocol())) {
-            copyJarProtocolFolder(sourceUrl, targetPath);
-        } else {
-            copyPathBackedFolder(resolveSourcePath(sourceUrl), targetPath);
         }
     }
 
@@ -272,6 +399,28 @@ public final class GetJarResources {
             return "";
         }
         return entryName.endsWith("/") ? entryName : entryName + "/";
+    }
+
+    private static String normalizeModFileResourcePath(String srcPath) {
+        String normalized = srcPath.replace('\\', '/');
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private static boolean containsResourcePrefix(JarContents contents, String normalizedSrcPath) {
+        String rootEntry = normalizeDirectoryEntryName(normalizedSrcPath);
+        AtomicBoolean found = new AtomicBoolean(false);
+        contents.visitContent(rootEntry, (relativePath, resource) -> {
+            if (relativePath.startsWith(rootEntry)) {
+                found.set(true);
+            }
+        });
+        return found.get();
     }
 
     private static Path resolveSourcePath(URL sourceUrl) throws IOException {
@@ -383,5 +532,8 @@ public final class GetJarResources {
     private static final class ExportStateFile {
         private int version = EXPORT_STATE_VERSION;
         private Map<String, String> entries = new HashMap<>();
+    }
+
+    private record ModFileExportSource(String fileName, JarContents contents) {
     }
 }

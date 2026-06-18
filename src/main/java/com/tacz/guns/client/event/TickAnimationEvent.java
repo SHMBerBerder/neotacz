@@ -1,22 +1,24 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.client.animation.statemachine.GunAnimationConstant;
-import com.tacz.guns.client.renderer.item.AnimateGeoItemRenderer;
+import com.tacz.guns.client.renderer.item.TaczItemRenderers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.extensions.common.IClientItemExtensions;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class TickAnimationEvent {
     @SubscribeEvent
-    public static void tickAnimation(TickEvent.ClientTickEvent event) {
+    public static void tickAnimation(ClientTickEvent.Post event) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
             return;
@@ -44,10 +46,7 @@ public class TickAnimationEvent {
     }
 
     @SubscribeEvent
-    public static void tickAnimation(TickEvent.RenderTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            return;
-        }
+    public static void tickAnimation(RenderFrameEvent.Pre event) {
         if (Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
             return;
         }
@@ -56,13 +55,13 @@ public class TickAnimationEvent {
             return;
         }
         ItemStack mainHandItem = player.getMainHandItem();
-        // 渲染相关内容整理到物品的IClientItemExtensions了，这个接口有待进一步抽象
-        if (IClientItemExtensions.of(mainHandItem.getItem()).getCustomRenderer() instanceof AnimateGeoItemRenderer<?, ?> renderer) {
+        // 渲染相关内容由 TACZ 客户端 renderer registry 持有，避免依赖已移除的旧 item extension renderer 入口。
+        TaczItemRenderers.getAnimated(mainHandItem).ifPresent(renderer -> {
             // 如果物品不一样了，先尝试初始化状态机
             if (renderer.needReInit(mainHandItem)) {
-                renderer.tryInit(mainHandItem, player, event.renderTickTime);
+                renderer.tryInit(mainHandItem, player, event.getPartialTick().getGameTimeDeltaPartialTick(false));
             }
             renderer.visualUpdate(mainHandItem);
-        }
+        });
     }
 }

@@ -1,11 +1,13 @@
 package com.tacz.guns.init;
 
-import com.tacz.guns.command.RootCommand;
-import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.fml.common.EventBusSubscriber;
 
-@Mod.EventBusSubscriber
+import com.tacz.guns.command.RootCommand;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
+
+@EventBusSubscriber
 public final class CommandRegistry {
     @SubscribeEvent
     public static void onServerStaring(RegisterCommandsEvent event) {

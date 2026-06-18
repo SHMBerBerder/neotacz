@@ -1,5 +1,8 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
+import com.github.mcmodderanchor.simplebedrockmodel.v1.client.handler.FirstPersonRenderHandler;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.tacz.guns.GunMod;
@@ -13,6 +16,7 @@ import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.nbt.AttachmentItemDataAccessor;
 import com.tacz.guns.client.animation.screen.RefitTransform;
+import com.tacz.guns.client.debug.ScopeRenderDebug;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.BedrockGunModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
@@ -27,14 +31,15 @@ import com.tacz.guns.util.math.SecondOrderDynamics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.ICancellableEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -46,7 +51,7 @@ import java.util.Optional;
 /**
  * 负责第一人称的枪械模型额外效果的渲染。其他部分参见 {@link GunItemRendererWrapper}
  */
-@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class FirstPersonRenderGunEvent {
     // 用于生成瞄准动作的运动曲线，使动作看起来更平滑
     private static final SecondOrderDynamics AIMING_DYNAMICS = new SecondOrderDynamics(1.2f, 1.2f, 0.5f, 0);
@@ -77,14 +82,41 @@ public class FirstPersonRenderGunEvent {
      */
     @SubscribeEvent
     public static void cancelItemInHandViewBobbing(RenderItemInHandBobEvent.BobView event) {
+        cancelGunItemInHandBob(event);
+    }
+
+    @SubscribeEvent
+    public static void cancelItemInHandHurtBobbing(RenderItemInHandBobEvent.BobHurt event) {
+        cancelGunItemInHandBob(event);
+    }
+
+    @SubscribeEvent
+    public static void cancelSbmItemInHandViewBobbing(com.github.mcmodderanchor.simplebedrockmodel.v1.client.event.RenderItemInHandBobEvent.BobView event) {
+        cancelGunItemInHandBob(event);
+    }
+
+    @SubscribeEvent
+    public static void cancelSbmItemInHandHurtBobbing(com.github.mcmodderanchor.simplebedrockmodel.v1.client.event.RenderItemInHandBobEvent.BobHurt event) {
+        cancelGunItemInHandBob(event);
+    }
+
+    private static void cancelGunItemInHandBob(ICancellableEvent event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
             return;
         }
-        ItemStack itemStack = KeepingItemRenderer.getRenderer().getCurrentItem();
+        ItemStack itemStack = getActiveFirstPersonItem();
         if (IGun.getIGunOrNull(itemStack) != null) {
             event.setCanceled(true);
         }
+    }
+
+    private static ItemStack getActiveFirstPersonItem() {
+        var activeInstance = FirstPersonRenderHandler.getActiveAnimationInstance();
+        if (activeInstance != null && !activeInstance.currentItem().isEmpty()) {
+            return activeInstance.currentItem();
+        }
+        return KeepingItemRenderer.getRenderer().getCurrentItem();
     }
 
     @SubscribeEvent
@@ -120,11 +152,12 @@ public class FirstPersonRenderGunEvent {
         // 配合运动曲线，计算改装枪口的打开进度
         float refitScreenOpeningProgress = REFIT_OPENING_DYNAMICS.update(RefitTransform.getOpeningProgress());
         // 配合运动曲线，计算瞄准进度
-        float aimingProgress = AIMING_DYNAMICS.update(IClientPlayerGunOperator.fromLocalPlayer(player).getClientAimingProgress(partialTicks));
+        float rawAimingProgress = IClientPlayerGunOperator.fromLocalPlayer(player).getClientAimingProgress(partialTicks);
+        float aimingProgress = AIMING_DYNAMICS.update(rawAimingProgress);
         // 应用枪械动态，如后坐力、持枪跳跃等
         applyGunMovements(model, aimingProgress, partialTicks);
         // 应用各种摄像机定位组的变换（默认持枪、瞄准、改装界面等）
-        applyFirstPersonPositioningTransform(poseStack, model, gunItemStack, aimingProgress, refitScreenOpeningProgress);
+        applyFirstPersonPositioningTransform(poseStack, model, gunItemStack, rawAimingProgress, aimingProgress, refitScreenOpeningProgress);
         // 应用动画约束变换
         applyAnimationConstraintTransform(poseStack, model, aimingProgress * (1 - refitScreenOpeningProgress));
     }
@@ -137,7 +170,9 @@ public class FirstPersonRenderGunEvent {
     /**
      * 应用瞄具摄像机定位组、机瞄摄像机定位组和 Idle 摄像机定位组的变换。会在几个摄像机定位之间插值。
      */
-    private static void applyFirstPersonPositioningTransform(PoseStack poseStack, BedrockGunModel model, ItemStack stack, float aimingProgress, float refitScreenOpeningProgress) {
+    private static void applyFirstPersonPositioningTransform(PoseStack poseStack, BedrockGunModel model, ItemStack stack,
+                                                             float rawAimingProgress, float aimingProgress,
+                                                             float refitScreenOpeningProgress) {
         IGun iGun = IGun.getIGunOrNull(stack);
         if (iGun == null) {
             return;
@@ -147,13 +182,16 @@ public class FirstPersonRenderGunEvent {
         // 应用瞄准定位
         List<BedrockPart> idleNodePath = model.getIdleSightPath();
         List<BedrockPart> aimingNodePath = null;
-        ResourceLocation scopeId = iGun.getAttachmentId(stack, AttachmentType.SCOPE);
+        Identifier scopeId = iGun.getAttachmentId(stack, AttachmentType.SCOPE);
         if (scopeId.equals(DefaultAssets.EMPTY_ATTACHMENT_ID)) {
             scopeId = iGun.getBuiltInAttachmentId(stack, AttachmentType.SCOPE);
         }
         CompoundTag scopeTag = iGun.getAttachmentTag(stack, AttachmentType.SCOPE);
         int zoomNumber = AttachmentItemDataAccessor.getZoomNumberFromTag(scopeTag);
         int viewIndex = 1;
+        int scopeViewPathCount = -1;
+        boolean scopePosPathPresent = false;
+        boolean scopeViewPathPresent = false;
         if (DefaultAssets.isEmptyAttachmentId(scopeId)) {
             // 未安装瞄具，使用机瞄定位组
             aimingNodePath = model.getIronSightPath();
@@ -161,6 +199,7 @@ public class FirstPersonRenderGunEvent {
             // 安装瞄具，组合瞄具定位组和瞄具视野定位组
             List<BedrockPart> scopeNodePath = model.getScopePosPath();
             if (scopeNodePath != null) {
+                scopePosPathPresent = true;
                 aimingNodePath = new ArrayList<>(scopeNodePath);
                 Optional<ClientAttachmentIndex> indexOptional = TimelessAPI.getClientAttachmentIndex(scopeId);
                 if (indexOptional.isPresent()) {
@@ -168,8 +207,10 @@ public class FirstPersonRenderGunEvent {
                     int[] views = indexOptional.get().getViews();
                     viewIndex = views[zoomNumber % views.length] - 1;
                     if (attachmentModel != null) {
+                        scopeViewPathCount = attachmentModel.getScopeViewPathCount();
                         List<BedrockPart> scopeViewPath = attachmentModel.getScopeViewPath(currentViewIndex == -1 ? viewIndex : currentViewIndex);
                         if (scopeViewPath != null) {
+                            scopeViewPathPresent = true;
                             aimingNodePath.addAll(scopeViewPath);
                         }
                     }
@@ -204,9 +245,13 @@ public class FirstPersonRenderGunEvent {
         List<BedrockPart> toNode = model.getRefitAttachmentViewPath(currentType);
         MathUtil.applyMatrixLerp(transformMatrix, getPositioningNodeInverse(fromNode), transformMatrix, refitScreenOpeningProgress);
         MathUtil.applyMatrixLerp(transformMatrix, getPositioningNodeInverse(toNode), transformMatrix, refitScreenOpeningProgress * refitTransformProgress);
+        ScopeRenderDebug.firstPersonTransform(stack, rawAimingProgress, aimingProgress, refitScreenOpeningProgress,
+                scopeId, zoomNumber, viewIndex, currentViewIndex, scopeViewPathCount, scopePosPathPresent,
+                scopeViewPathPresent, aimingNodePath == null ? 0 : aimingNodePath.size(),
+                transformMatrix.m30(), transformMatrix.m31(), transformMatrix.m32());
         // 应用变换到 PoseStack
         poseStack.translate(0, 1.5f, 0);
-        poseStack.mulPoseMatrix(transformMatrix);
+        poseStack.mulPose(transformMatrix);
         poseStack.translate(0, -1.5f, 0);
     }
 

@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 
@@ -15,9 +16,11 @@ public interface IComponentTooltip {
      * 获取物品的文本提示
      */
     static List<Component> getTooltipFromItem(ItemStack stack) {
+        Minecraft minecraft = Minecraft.getInstance();
         Options options = Minecraft.getInstance().options;
-        LocalPlayer player = Minecraft.getInstance().player;
-        return stack.getTooltipLines(player, options.advancedItemTooltips ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL);
+        LocalPlayer player = minecraft.player;
+        Item.TooltipContext context = minecraft.level == null ? Item.TooltipContext.EMPTY : Item.TooltipContext.of(minecraft.level, player);
+        return stack.getTooltipLines(context, player, options.advancedItemTooltips ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL);
     }
 
     /**

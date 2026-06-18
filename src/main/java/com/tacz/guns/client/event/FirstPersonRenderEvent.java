@@ -1,22 +1,22 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.client.animation.statemachine.AnimationStateMachine;
 import com.tacz.guns.api.client.other.KeepingItemRenderer;
 import com.tacz.guns.api.item.IGun;
-import com.tacz.guns.client.renderer.item.AnimateGeoItemRenderer;
-import com.tacz.guns.compat.oculus.OculusCompat;
+import com.tacz.guns.client.renderer.item.TaczItemRenderers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderHandEvent;
-import net.minecraftforge.client.extensions.common.IClientItemExtensions;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.client.event.RenderHandEvent;
+import net.neoforged.fml.common.Mod;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class FirstPersonRenderEvent {
     private static AnimationStateMachine<?> lastStateMachine = null;
 
@@ -44,8 +44,10 @@ public class FirstPersonRenderEvent {
             transformType = ItemDisplayContext.FIRST_PERSON_LEFT_HAND;
         }
 
-        // 渲染相关内容整理到物品的IClientItemExtensions了，这个接口有待进一步抽象
-        if (IClientItemExtensions.of(stack.getItem()).getCustomRenderer() instanceof AnimateGeoItemRenderer<?, ?> renderer) {
+        // 渲染相关内容由 TACZ 客户端 renderer registry 持有，避免依赖已移除的旧 item extension renderer 入口。
+        var rendererOptional = TaczItemRenderers.getAnimated(stack);
+        if (rendererOptional.isPresent()) {
+            var renderer = rendererOptional.get();
             // 如果旧的状态机已经不再使用且未正常退出，使其静默退出
             AnimationStateMachine<?> machine = renderer.getStateMachine(stack);
             if (machine != lastStateMachine) {
@@ -60,10 +62,7 @@ public class FirstPersonRenderEvent {
                 renderer.tryInit(stack, player, event.getPartialTick());
             }
 
-			// 防止内存泄漏
-			OculusCompat.endBatch(Minecraft.getInstance().renderBuffers().bufferSource());
-
-            renderer.renderFirstPerson(player, stack, transformType, event.getPoseStack(), event.getMultiBufferSource(),
+            renderer.renderFirstPerson(player, stack, transformType, event.getPoseStack(), event.getSubmitNodeCollector(),
                     event.getPackedLight(), event.getPartialTick());
             event.setCanceled(true);
         }

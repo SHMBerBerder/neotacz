@@ -23,6 +23,10 @@ run
 test
 logs
 .luarc.json
+.DS_Store
+.codex/
+.codex-loop-runs/
+.cgcignore
 
 # Files from Forge MDK
 forge*changelog.txt

@@ -1,5 +1,7 @@
 package com.tacz.guns.item;
 
+import com.tacz.guns.util.InventoryHandlerUtils;
+
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.GunProperties;
 import com.tacz.guns.api.GunProperty;
@@ -27,14 +29,13 @@ import com.tacz.guns.sound.SoundManager;
 import com.tacz.guns.util.AttachmentDataUtils;
 import com.tacz.guns.util.CycleTaskHelper;
 import it.unimi.dsi.fastutil.Pair;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.fml.LogicalSide;
 import org.luaj.vm2.LuaError;
 import org.luaj.vm2.LuaFunction;
 import org.luaj.vm2.LuaTable;
@@ -59,9 +60,9 @@ public class ModernKineticGunScriptAPI {
 
     private CommonGunIndex gunIndex;
 
-    private ResourceLocation gunId;
+    private Identifier gunId;
 
-    private ResourceLocation gunDisplayId;
+    private Identifier gunDisplayId;
 
     private Supplier<Float> pitchSupplier;
 
@@ -158,7 +159,7 @@ public class ModernKineticGunScriptAPI {
                 return false;
             }
             // 触发击发事件
-            boolean fire = !MinecraftForge.EVENT_BUS.post(new GunFireEvent(shooter, itemStack, LogicalSide.SERVER));
+            boolean fire = !NeoForge.EVENT_BUS.post(new GunFireEvent(shooter, itemStack, LogicalSide.SERVER)).isCanceled();
             if (fire) {
                 NetworkHandler.sendToTrackingEntity(new ServerMessageGunFire(shooter.getId(), itemStack), shooter);
                 // 削减弹药
@@ -181,7 +182,7 @@ public class ModernKineticGunScriptAPI {
                 float yaw = yawSupplier != null ? yawSupplier.get() : shooter.getYRot();
                 // 生成子弹
                 Level world = shooter.level();
-                ResourceLocation ammoId = gunData.getAmmoId();
+                Identifier ammoId = gunData.getAmmoId();
                 for (int i = 0; i < bulletAmount; i++) {
                     boolean isTracer = bulletData.hasTracerAmmo() && gunOperator.nextBulletIsTracer(bulletData.getTracerCountInterval());
                     EntityKineticBullet bullet = new EntityKineticBullet(world, shooter, itemStack, ammoId, gunId,
@@ -546,7 +547,7 @@ public class ModernKineticGunScriptAPI {
         if (abstractGunItem.useDummyAmmo(itemStack)) {
             return abstractGunItem.findAndExtractDummyAmmo(itemStack, neededAmount);
         } else {
-            return shooter.getCapability(ForgeCapabilities.ITEM_HANDLER, null)
+            return InventoryHandlerUtils.of(shooter)
                     .map(cap -> abstractGunItem.findAndExtractInventoryAmmo(cap, itemStack, neededAmount))
                     .orElse(0);
         }
@@ -564,7 +565,7 @@ public class ModernKineticGunScriptAPI {
         if (abstractGunItem.useDummyAmmo(itemStack)) {
             return abstractGunItem.getDummyAmmoAmount(itemStack) > 0;
         }
-        return shooter.getCapability(ForgeCapabilities.ITEM_HANDLER, null).map(cap -> {
+        return InventoryHandlerUtils.of(shooter).map(cap -> {
             // 背包检查
             for (int i = 0; i < cap.getSlots(); i++) {
                 ItemStack checkAmmoStack = cap.getStackInSlot(i);
@@ -881,9 +882,7 @@ public class ModernKineticGunScriptAPI {
         Optional<CommonGunIndex> gunIndexOptional = TimelessAPI.getCommonGunIndex(gunId);
         gunIndex = gunIndexOptional.orElse(null);
         abstractGunItem = gunItem;
-        if (itemStack.hasTag()) {
-            nbtUtil = new LuaNbtAccessor(itemStack.getTag());
-        }
+        nbtUtil = LuaNbtAccessor.from(itemStack);
     }
 
 

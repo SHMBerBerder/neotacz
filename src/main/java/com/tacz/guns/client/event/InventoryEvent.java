@@ -1,5 +1,7 @@
 package com.tacz.guns.client.event;
 
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.client.event.SwapItemWithOffHand;
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator;
@@ -10,13 +12,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class InventoryEvent {
     private static final int HOTBAR_WARM_UP_INTERVAL_TICKS = 7;
     private static final int BACKPACK_WARM_UP_INTERVAL_TICKS = 41;
@@ -26,26 +28,27 @@ public class InventoryEvent {
     private static ItemStack oldHotbarSelectItem = ItemStack.EMPTY;
 
     @SubscribeEvent
-    public static void onPlayerChangeSelect(TickEvent.ClientTickEvent event) {
+    public static void onPlayerChangeSelect(ClientTickEvent.Post event) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
             return;
         }
         Inventory inventory = player.getInventory();
+        int selected = inventory.getSelectedSlot();
         // 玩家切换选中框的情况
-        if (oldHotbarSelected != inventory.selected) {
-            ClientIndexManager.warmUpItem(inventory.getItem(inventory.selected));
+        if (oldHotbarSelected != selected) {
+            ClientIndexManager.warmUpItem(inventory.getItem(selected));
             if (oldHotbarSelected == -1) {
                 IClientPlayerGunOperator.fromLocalPlayer(player).draw(ItemStack.EMPTY);
             } else {
                 IClientPlayerGunOperator.fromLocalPlayer(player).draw(inventory.getItem(oldHotbarSelected));
             }
-            oldHotbarSelected = inventory.selected;
-            oldHotbarSelectItem = inventory.getItem(inventory.selected).copy();
+            oldHotbarSelected = selected;
+            oldHotbarSelectItem = inventory.getItem(selected).copy();
             return;
         }
         // 玩家选中的物品改变的情况
-        ItemStack currentItem = inventory.getItem(inventory.selected);
+        ItemStack currentItem = inventory.getItem(selected);
         if (currentItem.getItem() instanceof IAnimationItem item ) {
             if (!item.isSame(oldHotbarSelectItem, currentItem)) {
                 IClientPlayerGunOperator.fromLocalPlayer(player).draw(oldHotbarSelectItem);
@@ -59,13 +62,11 @@ public class InventoryEvent {
         if (!ItemStack.matches(oldHotbarSelectItem, currentItem)) {
             oldHotbarSelectItem = currentItem.copy();
         }
-        if (event.phase == TickEvent.Phase.END) {
-            if (player.tickCount % HOTBAR_WARM_UP_INTERVAL_TICKS == 0) {
-                ClientIndexManager.warmUpEquippedAndHotbarModels();
-            }
-            if (player.tickCount % BACKPACK_WARM_UP_INTERVAL_TICKS == 0) {
-                ClientIndexManager.warmUpBackpackModels();
-            }
+        if (player.tickCount % HOTBAR_WARM_UP_INTERVAL_TICKS == 0) {
+            ClientIndexManager.warmUpEquippedAndHotbarModels();
+        }
+        if (player.tickCount % BACKPACK_WARM_UP_INTERVAL_TICKS == 0) {
+            ClientIndexManager.warmUpBackpackModels();
         }
     }
 

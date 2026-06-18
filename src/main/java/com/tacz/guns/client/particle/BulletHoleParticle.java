@@ -1,48 +1,50 @@
 package com.tacz.guns.client.particle;
 
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.config.client.RenderConfig;
 import com.tacz.guns.init.ModBlocks;
-import com.tacz.guns.particles.BulletHoleOption;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
-import net.minecraft.client.particle.ParticleRenderType;
-import net.minecraft.client.particle.TextureSheetParticle;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
+import net.minecraft.client.particle.SingleQuadParticle;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.RandomSource;
+import com.tacz.guns.particles.BulletHoleOption;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 /**
  * Author: Forked from MrCrayfish, continued by Timeless devs
  */
-public class BulletHoleParticle extends TextureSheetParticle {
+public class BulletHoleParticle extends SingleQuadParticle {
+    private static final float BASE_ALPHA = 0.9F;
+    private static final float LEGACY_DECAL_NORMAL_OFFSET = 0.01F;
+    private static final float INV_SQRT_2 = 0.70710677F;
     private final Direction direction;
     private final BlockPos pos;
     private int uOffset;
     private int vOffset;
     private float textureDensity;
+    private SingleQuadParticle.Layer layer = SingleQuadParticle.Layer.TRANSLUCENT_TERRAIN;
+    private float baseRed = 1.0F;
+    private float baseGreen = 1.0F;
+    private float baseBlue = 1.0F;
 
     public BulletHoleParticle(ClientLevel world, double x, double y, double z, Direction direction, BlockPos pos, String ammoId, String gunId, String gunDisplayId) {
-        super(world, x, y, z);
-        this.setSprite(this.getSprite(pos));
+        super(world, x, y, z, getSprite(world, pos));
+        this.setSprite(getSprite(world, pos));
         this.direction = direction;
         this.pos = pos;
         this.lifetime = this.getLifetimeFromConfig(world);
@@ -54,22 +56,27 @@ public class BulletHoleParticle extends TextureSheetParticle {
         if (state.is(ModBlocks.TARGET.get()) || shouldRemove()) {
             this.remove();
         }
-        TimelessAPI.getGunDisplay(new ResourceLocation(gunDisplayId), new ResourceLocation(gunId)).ifPresent(gunIndex -> {
+        TimelessAPI.getGunDisplay(Identifier.parse(gunDisplayId), Identifier.parse(gunId)).ifPresent(gunIndex -> {
             float[] gunTracerColor = gunIndex.getTracerColor();
             if (gunTracerColor != null) {
-                this.rCol = gunTracerColor[0];
-                this.gCol = gunTracerColor[1];
-                this.bCol = gunTracerColor[2];
+                this.setBaseColor(gunTracerColor[0], gunTracerColor[1], gunTracerColor[2]);
             } else {
-                TimelessAPI.getClientAmmoIndex(new ResourceLocation(ammoId)).ifPresent(ammoIndex -> {
+                TimelessAPI.getClientAmmoIndex(Identifier.parse(ammoId)).ifPresent(ammoIndex -> {
                     float[] ammoTracerColor = ammoIndex.getTracerColor();
-                    this.rCol = ammoTracerColor[0];
-                    this.gCol = ammoTracerColor[1];
-                    this.bCol = ammoTracerColor[2];
+                    this.setBaseColor(ammoTracerColor[0], ammoTracerColor[1], ammoTracerColor[2]);
                 });
             }
         });
-        this.alpha = 0.9F;
+        this.alpha = BASE_ALPHA;
+    }
+
+    private void setBaseColor(float red, float green, float blue) {
+        this.baseRed = red;
+        this.baseGreen = green;
+        this.baseBlue = blue;
+        this.rCol = red;
+        this.gCol = green;
+        this.bCol = blue;
     }
 
     private int getLifetimeFromConfig(ClientLevel world) {
@@ -77,7 +84,7 @@ public class BulletHoleParticle extends TextureSheetParticle {
         if (configLife <= 1) {
             return configLife;
         }
-        return configLife + world.random.nextInt(configLife / 2);
+        return configLife + world.getRandom().nextInt(configLife / 2);
     }
 
     @Override
@@ -87,16 +94,12 @@ public class BulletHoleParticle extends TextureSheetParticle {
         this.vOffset = this.random.nextInt(16);
         // 材质应该都是方形
         this.textureDensity = (sprite.getU1() - sprite.getU0()) / 16.0F;
+        this.layer = SingleQuadParticle.Layer.bySprite(sprite);
     }
 
-    private TextureAtlasSprite getSprite(BlockPos pos) {
-        Minecraft minecraft = Minecraft.getInstance();
-        Level world = minecraft.level;
-        if (world != null) {
-            BlockState state = world.getBlockState(pos);
-            return Minecraft.getInstance().getBlockRenderer().getBlockModelShaper().getTexture(state, world, pos);
-        }
-        return Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(MissingTextureAtlasSprite.getLocation());
+    private static TextureAtlasSprite getSprite(ClientLevel world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return Minecraft.getInstance().getModelManager().getBlockStateModelSet().getParticleMaterial(state, world, pos).sprite();
     }
 
     @Override
@@ -128,58 +131,48 @@ public class BulletHoleParticle extends TextureSheetParticle {
     }
 
     @Override
-    public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
-        Vec3 view = renderInfo.getPosition();
-        float particleX = (float) (Mth.lerp(partialTicks, this.xo, this.x) - view.x());
-        float particleY = (float) (Mth.lerp(partialTicks, this.yo, this.y) - view.y());
-        float particleZ = (float) (Mth.lerp(partialTicks, this.zo, this.z) - view.z());
-        Quaternionf quaternion = this.direction.getRotation();
-        Vector3f[] points = new Vector3f[]{
-                // Y 值稍微大一点点，防止 z-fight
-                new Vector3f(-1.0F, 0.01F, -1.0F),
-                new Vector3f(-1.0F, 0.01F, 1.0F),
-                new Vector3f(1.0F, 0.01F, 1.0F),
-                new Vector3f(1.0F, 0.01F, -1.0F)
-        };
-        float scale = this.getQuadSize(partialTicks);
-
-        for (int i = 0; i < 4; ++i) {
-            Vector3f vector3f = points[i];
-            vector3f.rotate(quaternion);
-            vector3f.mul(scale);
-            vector3f.add(particleX, particleY, particleZ);
-        }
-
-        // UV 坐标
-        float u0 = this.getU0();
-        float u1 = this.getU1();
-        float v0 = this.getV0();
-        float v1 = this.getV1();
-
+    public void extract(QuadParticleRenderState particleTypeRenderState, Camera camera, float partialTicks) {
         // 0 - 30 tick 内，从 15 亮度到 0 亮度
         int light = Math.max(15 - this.age / 2, 0);
-        int lightColor = LightTexture.pack(light, light);
 
         // 颜色，逐渐渐变到 0 0 0，也就是黑色
         float colorPercent = light / 15.0f;
-        float red = this.rCol * colorPercent;
-        float green = this.gCol * colorPercent;
-        float blue = this.bCol * colorPercent;
+        this.rCol = this.baseRed * colorPercent;
+        this.gCol = this.baseGreen * colorPercent;
+        this.bCol = this.baseBlue * colorPercent;
 
         // 透明度，逐渐变成 0，也就是透明
         double threshold = RenderConfig.BULLET_HOLE_PARTICLE_FADE_THRESHOLD.get() * this.lifetime;
-        float fade = 1.0f - (float) (Math.max(this.age - threshold, 0) / (this.lifetime - threshold));
-        float alphaFade = this.alpha * fade;
+        double fadeRange = this.lifetime - threshold;
+        float fade = fadeRange <= 0 ? 1.0F : 1.0F - (float) (Math.max(this.age - threshold, 0) / fadeRange);
+        this.alpha = BASE_ALPHA * Mth.clamp(fade, 0.0F, 1.0F);
 
-        buffer.vertex(points[0].x(), points[0].y(), points[0].z()).uv(u1, v1).color(red, green, blue, alphaFade).uv2(lightColor).endVertex();
-        buffer.vertex(points[1].x(), points[1].y(), points[1].z()).uv(u1, v0).color(red, green, blue, alphaFade).uv2(lightColor).endVertex();
-        buffer.vertex(points[2].x(), points[2].y(), points[2].z()).uv(u0, v0).color(red, green, blue, alphaFade).uv2(lightColor).endVertex();
-        buffer.vertex(points[3].x(), points[3].y(), points[3].z()).uv(u0, v1).color(red, green, blue, alphaFade).uv2(lightColor).endVertex();
+        Vec3 view = camera.position();
+        float particleX = (float) (Mth.lerp((double) partialTicks, this.xo, this.x) - view.x());
+        float particleY = (float) (Mth.lerp((double) partialTicks, this.yo, this.y) - view.y());
+        float particleZ = (float) (Mth.lerp((double) partialTicks, this.zo, this.z) - view.z());
+
+        float normalOffset = this.getQuadSize(partialTicks) * LEGACY_DECAL_NORMAL_OFFSET;
+        particleX += this.direction.getStepX() * normalOffset;
+        particleY += this.direction.getStepY() * normalOffset;
+        particleZ += this.direction.getStepZ() * normalOffset;
+
+        // 1.20.1 手工提交的是 X/Z 平面、+Y 法线。26.1 retained quad 是 X/Y 平面、+Z 法线；
+        // 这里先映射 (x, y, 0) -> (-x, 0, y)，再应用命中面朝向，保持旧 UV 方向和防 z-fight 偏移。
+        Quaternionf legacyDecalBasis = new Quaternionf(0.0F, INV_SQRT_2, INV_SQRT_2, 0.0F);
+        Quaternionf quaternion = new Quaternionf(this.direction.getRotation()).mul(legacyDecalBasis);
+        this.extractRotatedQuad(particleTypeRenderState, quaternion, particleX, particleY, particleZ, partialTicks);
     }
 
     @Override
-    public ParticleRenderType getRenderType() {
-        return ParticleRenderType.TERRAIN_SHEET;
+    protected int getLightCoords(float partialTicks) {
+        int light = Math.max(15 - this.age / 2, 0);
+        return LightCoordsUtil.pack(light, light);
+    }
+
+    @Override
+    protected SingleQuadParticle.Layer getLayer() {
+        return this.layer != null ? this.layer : SingleQuadParticle.Layer.TRANSLUCENT_TERRAIN;
     }
 
     private boolean shouldRemove() {
@@ -201,15 +194,13 @@ public class BulletHoleParticle extends TextureSheetParticle {
         }
     }
 
-    @OnlyIn(Dist.CLIENT)
     public static class Provider implements ParticleProvider<BulletHoleOption> {
         public Provider() {
         }
 
         @Override
-        public BulletHoleParticle createParticle(@NotNull BulletHoleOption option, @NotNull ClientLevel world, double x, double y, double z, double pXSpeed, double pYSpeed, double pZSpeed) {
-            BulletHoleParticle particle = new BulletHoleParticle(world, x, y, z, option.getDirection(), option.getPos(), option.getAmmoId(), option.getGunId(), option.getGunDisplayId());
-            return particle;
+        public Particle createParticle(@NotNull BulletHoleOption option, @NotNull ClientLevel world, double x, double y, double z, double pXSpeed, double pYSpeed, double pZSpeed, @NotNull RandomSource random) {
+            return new BulletHoleParticle(world, x, y, z, option.getDirection(), option.getPos(), option.getAmmoId(), option.getGunId(), option.getGunDisplayId());
         }
     }
 }

@@ -414,7 +414,7 @@
 			},
 			"sound_effects": {
 				"0.0": {
-					"effect": "p01_ar_mike4_raise"
+					"effect": "tacz:m4a1/m4a1_draw"
 				}
 			}
 		},

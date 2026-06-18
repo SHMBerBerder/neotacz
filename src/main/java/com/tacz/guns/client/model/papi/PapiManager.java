@@ -3,13 +3,10 @@ package com.tacz.guns.client.model.papi;
 import com.google.common.collect.Maps;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.Map;
 import java.util.function.Function;
 
-@OnlyIn(Dist.CLIENT)
 public final class PapiManager {
     private static final Map<String, Function<ItemStack, String>> PAPI = Maps.newHashMap();
 
@@ -25,7 +22,7 @@ public final class PapiManager {
     }
 
     public static String getTextShow(String textKey, ItemStack stack) {
-        String text = I18n.language.getOrDefault(textKey);
+        String text = I18n.get(textKey);
         for (var entry : PAPI.entrySet()) {
             String placeholder = entry.getKey();
             String data = entry.getValue().apply(stack);

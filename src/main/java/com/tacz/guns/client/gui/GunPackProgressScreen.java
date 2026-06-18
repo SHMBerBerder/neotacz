@@ -1,7 +1,8 @@
 package com.tacz.guns.client.gui;
 
+import com.tacz.guns.util.MinecraftGuiCompat;
 import net.minecraft.client.GameNarrator;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -30,19 +31,18 @@ public class GunPackProgressScreen extends Screen implements ProgressListener {
     }
 
     @Override
-    public void render(@NotNull GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
+    public void extractRenderState(@NotNull GuiGraphicsExtractor gui, int mouseX, int mouseY, float partialTick) {
         if (this.stop) {
-            this.getMinecraft().setScreen(null);
+            MinecraftGuiCompat.setScreen(null);
         } else {
-            this.renderBackground(gui);
             if (this.header != null) {
-                gui.drawCenteredString(this.font, this.header, this.width / 2, 70, 16777215);
+                gui.centeredText(this.font, this.header, this.width / 2, 70, 16777215);
             }
             if (this.stage != null && this.progress > 0) {
                 MutableComponent text = this.stage.copy().append(" " + this.progress + "%");
-                gui.drawCenteredString(this.font, text, this.width / 2, 90, 16777215);
+                gui.centeredText(this.font, text, this.width / 2, 90, 16777215);
             }
-            super.render(gui, mouseX, mouseY, partialTick);
+            super.extractRenderState(gui, mouseX, mouseY, partialTick);
         }
     }
 

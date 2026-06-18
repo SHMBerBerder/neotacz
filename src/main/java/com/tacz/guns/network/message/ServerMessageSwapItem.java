@@ -1,9 +1,8 @@
 package com.tacz.guns.network.message;
 
-import com.tacz.guns.api.client.event.SwapItemWithOffHand;
+import com.tacz.guns.network.NetworkHandler;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.network.NetworkEvent;
+import com.tacz.guns.network.NetworkContext;
 
 import java.util.function.Supplier;
 
@@ -18,13 +17,7 @@ public class ServerMessageSwapItem {
         return new ServerMessageSwapItem();
     }
 
-    public static void handle(ServerMessageSwapItem message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
-        if (context.getDirection().getReceptionSide().isClient()) {
-            context.enqueueWork(() -> {
-                MinecraftForge.EVENT_BUS.post(new SwapItemWithOffHand());
-            });
-        }
-        context.setPacketHandled(true);
+    public static void handle(ServerMessageSwapItem message, Supplier<NetworkContext> contextSupplier) {
+        NetworkHandler.handleClientboundMessage(message, contextSupplier);
     }
 }

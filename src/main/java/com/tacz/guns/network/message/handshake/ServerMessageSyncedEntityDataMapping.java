@@ -4,28 +4,25 @@ import com.tacz.guns.GunMod;
 import com.tacz.guns.entity.sync.core.SyncedDataKey;
 import com.tacz.guns.entity.sync.core.SyncedEntityData;
 import com.tacz.guns.network.IMessage;
-import com.tacz.guns.network.LoginIndexHolder;
-import com.tacz.guns.network.NetworkHandler;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.network.NetworkEvent;
+import net.minecraft.resources.Identifier;
+import com.tacz.guns.network.NetworkContext;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
 import java.util.function.Supplier;
 
-public class ServerMessageSyncedEntityDataMapping extends LoginIndexHolder implements IMessage<ServerMessageSyncedEntityDataMapping> {
+public class ServerMessageSyncedEntityDataMapping implements IMessage<ServerMessageSyncedEntityDataMapping> {
     public static final Marker HANDSHAKE = MarkerManager.getMarker("TACZ_HANDSHAKE");
-    private Map<ResourceLocation, List<Pair<ResourceLocation, Integer>>> keyMap;
+    private Map<Identifier, List<Pair<Identifier, Integer>>> keyMap;
 
     public ServerMessageSyncedEntityDataMapping() {
     }
 
-    private ServerMessageSyncedEntityDataMapping(Map<ResourceLocation, List<Pair<ResourceLocation, Integer>>> keyMap) {
+    private ServerMessageSyncedEntityDataMapping(Map<Identifier, List<Pair<Identifier, Integer>>> keyMap) {
         this.keyMap = keyMap;
     }
 
@@ -35,8 +32,8 @@ public class ServerMessageSyncedEntityDataMapping extends LoginIndexHolder imple
         buffer.writeInt(keys.size());
         keys.forEach(key -> {
             int id = SyncedEntityData.instance().getInternalId(key);
-            buffer.writeResourceLocation(key.classKey().id());
-            buffer.writeResourceLocation(key.id());
+            buffer.writeIdentifier(key.classKey().id());
+            buffer.writeIdentifier(key.id());
             buffer.writeVarInt(id);
         });
     }
@@ -44,10 +41,10 @@ public class ServerMessageSyncedEntityDataMapping extends LoginIndexHolder imple
     @Override
     public ServerMessageSyncedEntityDataMapping decode(FriendlyByteBuf buffer) {
         int size = buffer.readInt();
-        Map<ResourceLocation, List<Pair<ResourceLocation, Integer>>> keyMap = new HashMap<>();
+        Map<Identifier, List<Pair<Identifier, Integer>>> keyMap = new HashMap<>();
         for (int i = 0; i < size; i++) {
-            ResourceLocation classId = buffer.readResourceLocation();
-            ResourceLocation keyId = buffer.readResourceLocation();
+            Identifier classId = buffer.readIdentifier();
+            Identifier keyId = buffer.readIdentifier();
             int id = buffer.readVarInt();
             keyMap.computeIfAbsent(classId, c -> new ArrayList<>()).add(Pair.of(keyId, id));
         }
@@ -55,25 +52,20 @@ public class ServerMessageSyncedEntityDataMapping extends LoginIndexHolder imple
     }
 
     @Override
-    public void handle(ServerMessageSyncedEntityDataMapping message, Supplier<NetworkEvent.Context> supplier) {
+    public void handle(ServerMessageSyncedEntityDataMapping message, Supplier<NetworkContext> supplier) {
         GunMod.LOGGER.debug(HANDSHAKE, "Received synced key mappings from server");
-        CountDownLatch block = new CountDownLatch(1);
-        supplier.get().enqueueWork(() -> {
+        NetworkContext context = supplier.get();
+        context.enqueueWork(() -> {
             if (!SyncedEntityData.instance().updateMappings(message)) {
-                supplier.get().getNetworkManager().disconnect(Component.literal("Connection closed - [TacZ] Received unknown synced data keys."));
+                context.disconnect(Component.literal("Connection closed - [TacZ] Received unknown synced data keys."));
+                return;
             }
-            block.countDown();
+            context.reply(new Acknowledge());
         });
-        try {
-            block.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        supplier.get().setPacketHandled(true);
-        NetworkHandler.HANDSHAKE_CHANNEL.reply(new Acknowledge(), supplier.get());
+        context.setPacketHandled(true);
     }
 
-    public Map<ResourceLocation, List<Pair<ResourceLocation, Integer>>> getKeyMap() {
+    public Map<Identifier, List<Pair<Identifier, Integer>>> getKeyMap() {
         return this.keyMap;
     }
 }

@@ -11,15 +11,18 @@ import com.tacz.guns.resource.pojo.data.gun.GunData;
 import com.tacz.guns.util.AttachmentDataUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
 public final class GunPropertyDiagrams {
+    private static final int PANEL_WIDTH = 288;
+    private static final int PANEL_PADDING = 5;
+
     public static int getHidePropertyButtonYOffset() {
         int[] startYOffset = new int[]{49};
         AttachmentPropertyManager.getModifiers().forEach((key, value) -> {
@@ -28,8 +31,8 @@ public final class GunPropertyDiagrams {
         return startYOffset[0];
     }
 
-    public static void draw(GuiGraphics graphics, Font font, int x, int y) {
-        graphics.fill(x, y, x + 288, y + getHidePropertyButtonYOffset() - 11, 0xAF222222);
+    public static void draw(GuiGraphicsExtractor graphics, Font font, int x, int y) {
+        graphics.fill(x, y, x + PANEL_WIDTH, y + getHidePropertyButtonYOffset() - 11, 0xAF222222);
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
@@ -44,7 +47,7 @@ public final class GunPropertyDiagrams {
         if (cacheProperty == null) {
             return;
         }
-        ResourceLocation gunId = iGun.getGunId(gunItem);
+        Identifier gunId = iGun.getGunId(gunItem);
         TimelessAPI.getCommonGunIndex(gunId).ifPresent(index -> {
             GunData gunData = index.getGunData();
             FireMode fireMode = iGun.getFireMode(gunItem);
@@ -61,6 +64,7 @@ public final class GunPropertyDiagrams {
             int fontColor = 0xCCCCCC;
             int nameTextStartX = x + 5;
             int valueTextStartX = x + 210;
+            int valueTextRightX = x + PANEL_WIDTH - PANEL_PADDING;
 
             int[] yOffset = new int[]{y + 5};
 
@@ -76,7 +80,7 @@ public final class GunPropertyDiagrams {
                 fireModeText.append(Component.translatable("gui.tacz.gun_refit.property_diagrams.unknown"));
             }
 
-            graphics.drawString(font, fireModeText, nameTextStartX+12, yOffset[0], fontColor, false);
+            graphics.text(font, fireModeText, nameTextStartX+12, yOffset[0], fontColor, false);
 
             yOffset[0] += 10;
 
@@ -84,10 +88,10 @@ public final class GunPropertyDiagrams {
             // 弹匣容量
             if (iGun.useInventoryAmmo(gunItem)) {
                 // 如果使用背包直读，则直接显示满条和 INV 的标注
-                graphics.drawString(font, Component.translatable("gui.tacz.gun_refit.property_diagrams.ammo_capacity"), nameTextStartX, yOffset[0], fontColor, false);
+                graphics.text(font, Component.translatable("gui.tacz.gun_refit.property_diagrams.ammo_capacity"), nameTextStartX, yOffset[0], fontColor, false);
                 graphics.fill(barStartX, yOffset[0] + 2, barEndX, yOffset[0] + 6, barBackgroundColor);
                 graphics.fill(barStartX, yOffset[0] + 2, barStartX + barMaxWidth, yOffset[0] + 6, barBaseColor);
-                graphics.drawString(font, Component.literal("INV"), valueTextStartX, yOffset[0], fontColor, false);
+                drawValue(graphics, font, "INV", x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
             } else {
                 int barrelBulletAmount = (iGun.hasBulletInBarrel(gunItem) && index.getGunData().getBolt() != Bolt.OPEN_BOLT) ? 1 : 0;
                 int ammoAmount = gunData.getAmmoAmount() + barrelBulletAmount;
@@ -97,15 +101,15 @@ public final class GunPropertyDiagrams {
                 int addAmmoCount = Math.max(maxAmmoCount - ammoAmount, 0);
                 int addAmmoCountLength = (int) (barMaxWidth * addAmmoCount / 100.0);
 
-                graphics.drawString(font, Component.translatable("gui.tacz.gun_refit.property_diagrams.ammo_capacity"), nameTextStartX, yOffset[0], fontColor, false);
+                graphics.text(font, Component.translatable("gui.tacz.gun_refit.property_diagrams.ammo_capacity"), nameTextStartX, yOffset[0], fontColor, false);
                 graphics.fill(barStartX, yOffset[0] + 2, barEndX, yOffset[0] + 6, barBackgroundColor);
                 graphics.fill(barStartX, yOffset[0] + 2, ammoLength, yOffset[0] + 6, barBaseColor);
                 if (addAmmoCount > 0) {
                     int barRight = Math.min(ammoLength + addAmmoCountLength, barEndX);
                     graphics.fill(ammoLength, yOffset[0] + 2, barRight, yOffset[0] + 6, barPositivelyColor);
-                    graphics.drawString(font, String.format("%d §a(+%d)", ammoAmount, addAmmoCount), valueTextStartX, yOffset[0], fontColor, false);
+                    drawValue(graphics, font, String.format("%d §a(+%d)", ammoAmount, addAmmoCount), x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
                 } else {
-                    graphics.drawString(font, String.format("%d", ammoAmount), valueTextStartX, yOffset[0], fontColor, false);
+                    drawValue(graphics, font, String.format("%d", ammoAmount), x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
                 }
             }
 
@@ -118,10 +122,10 @@ public final class GunPropertyDiagrams {
             int sprintLength = (int) (barStartX + barMaxWidth * sprintTimePercent);
             String sprintValueText = String.format("%.2fs", sprintTime);
 
-            graphics.drawString(font, Component.translatable("gui.tacz.gun_refit.property_diagrams.sprint_time"), nameTextStartX, yOffset[0], fontColor, false);
+            graphics.text(font, Component.translatable("gui.tacz.gun_refit.property_diagrams.sprint_time"), nameTextStartX, yOffset[0], fontColor, false);
             graphics.fill(barStartX, yOffset[0] + 2, barEndX, yOffset[0] + 6, barBackgroundColor);
             graphics.fill(barStartX, yOffset[0] + 2, sprintLength, yOffset[0] + 6, barBaseColor);
-            graphics.drawString(font, sprintValueText, valueTextStartX, yOffset[0], fontColor, false);
+            drawValue(graphics, font, sprintValueText, x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
 
             yOffset[0] += 10;
 
@@ -139,22 +143,42 @@ public final class GunPropertyDiagrams {
                 int defaultLength = (int) (barStartX + barMaxWidth * defaultPercent);
                 int modifierLength = Mth.clamp(defaultLength + (int) (barMaxWidth * modifierPercent), barStartX, barEndX);
 
-                graphics.drawString(font, Component.translatable(titleKey), nameTextStartX, yOffset[0], fontColor, false);
+                graphics.text(font, Component.translatable(titleKey), nameTextStartX, yOffset[0], fontColor, false);
                 graphics.fill(barStartX, yOffset[0] + 2, barEndX, yOffset[0] + 6, barBackgroundColor);
                 graphics.fill(barStartX, yOffset[0] + 2, defaultLength, yOffset[0] + 6, barBaseColor);
                 if (modifier > 0) {
                     int barColor = positivelyBetter ? barPositivelyColor : barNegativeColor;
                     graphics.fill(defaultLength, yOffset[0] + 2, modifierLength, yOffset[0] + 6, barColor);
-                    graphics.drawString(font, positivelyString, valueTextStartX, yOffset[0], fontColor, false);
+                    drawValue(graphics, font, positivelyString, x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
                 } else if (modifier < 0) {
                     int barColor = positivelyBetter ? barNegativeColor : barPositivelyColor;
                     graphics.fill(modifierLength, yOffset[0] + 2, defaultLength, yOffset[0] + 6, barColor);
-                    graphics.drawString(font, negativeString, valueTextStartX, yOffset[0], fontColor, false);
+                    drawValue(graphics, font, negativeString, x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
                 } else {
-                    graphics.drawString(font, defaultString, valueTextStartX, yOffset[0], fontColor, false);
+                    drawValue(graphics, font, defaultString, x, valueTextStartX, valueTextRightX, yOffset[0], fontColor);
                 }
                 yOffset[0] += 10;
             }));
         });
+    }
+
+    private static void drawValue(GuiGraphicsExtractor graphics, Font font, String value, int panelX, int preferredX, int rightX, int y, int color) {
+        int minX = panelX + PANEL_PADDING;
+        int textWidth = font.width(value);
+        if (textWidth <= 0) {
+            return;
+        }
+        int columnWidth = Math.max(1, rightX - preferredX);
+        if (textWidth <= columnWidth) {
+            graphics.text(font, value, preferredX, y, color, false);
+            return;
+        }
+        int panelWidth = Math.max(1, rightX - minX);
+        if (textWidth <= panelWidth) {
+            graphics.text(font, value, rightX - textWidth, y, color, false);
+            return;
+        }
+
+        graphics.text(font, value, minX, y, color, false);
     }
 }

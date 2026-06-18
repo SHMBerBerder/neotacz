@@ -12,6 +12,7 @@ import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.common.EntityKillByGunEvent;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
+import com.tacz.guns.api.item.nbt.ItemStackNbtHelper;
 import com.tacz.guns.client.particle.AmmoParticleSpawner;
 import com.tacz.guns.config.common.AmmoConfig;
 import com.tacz.guns.config.sync.SyncConfig;
@@ -39,10 +40,14 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerEntity;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -61,19 +66,17 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.entity.IEntityAdditionalSpawnData;
-import net.minecraftforge.entity.PartEntity;
-import net.minecraftforge.fml.DistExecutor;
-import net.minecraftforge.fml.LogicalSide;
-import net.minecraftforge.network.NetworkHooks;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.entity.IEntityWithComplexSpawn;
+import net.neoforged.neoforge.entity.PartEntity;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.fml.LogicalSide;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector2d;
 import org.joml.Vector3d;
-import org.joml.Vector3f;
 
 import java.util.*;
 
@@ -84,11 +87,12 @@ import static com.tacz.guns.api.event.common.GunDamageSourcePart.NON_ARMOR_PIERC
 /**
  * 动能武器打出的子弹实体。
  */
-public class EntityKineticBullet extends Projectile implements IEntityAdditionalSpawnData {
-    public static final EntityType<EntityKineticBullet> TYPE = EntityType.Builder.<EntityKineticBullet>of(EntityKineticBullet::new, MobCategory.MISC).noSummon().noSave().fireImmune().sized(0.0625F, 0.0625F).clientTrackingRange(5).updateInterval(5).setShouldReceiveVelocityUpdates(false).build("bullet");
-    public static final TagKey<EntityType<?>> USE_MAGIC_DAMAGE_ON = TagKey.create(Registries.ENTITY_TYPE, new ResourceLocation("tacz:use_magic_damage_on"));
-    public static final TagKey<EntityType<?>> USE_VOID_DAMAGE_ON = TagKey.create(Registries.ENTITY_TYPE, new ResourceLocation("tacz:use_void_damage_on"));
-    public static final TagKey<EntityType<?>> PRETEND_MELEE_DAMAGE_ON = TagKey.create(Registries.ENTITY_TYPE, new ResourceLocation("tacz:pretend_melee_damage_on"));
+public class EntityKineticBullet extends Projectile implements IEntityWithComplexSpawn {
+    private static final ResourceKey<EntityType<?>> BULLET_TYPE_KEY = ResourceKey.create(Registries.ENTITY_TYPE, Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "bullet"));
+    public static final EntityType<EntityKineticBullet> TYPE = EntityType.Builder.<EntityKineticBullet>of(EntityKineticBullet::new, MobCategory.MISC).noSummon().noSave().fireImmune().sized(0.0625F, 0.0625F).clientTrackingRange(5).updateInterval(5).setShouldReceiveVelocityUpdates(false).build(BULLET_TYPE_KEY);
+    public static final TagKey<EntityType<?>> USE_MAGIC_DAMAGE_ON = TagKey.create(Registries.ENTITY_TYPE, Identifier.parse("tacz:use_magic_damage_on"));
+    public static final TagKey<EntityType<?>> USE_VOID_DAMAGE_ON = TagKey.create(Registries.ENTITY_TYPE, Identifier.parse("tacz:use_void_damage_on"));
+    public static final TagKey<EntityType<?>> PRETEND_MELEE_DAMAGE_ON = TagKey.create(Registries.ENTITY_TYPE, Identifier.parse("tacz:pretend_melee_damage_on"));
 
     /**
      * 允许其他 mod 使用 persistent data（永久数据） 控制曳光弹的颜色和粗细。<p>
@@ -111,7 +115,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
 
     private static final ExplosionData DEFAULT_EXPLOSION_DATA = new ExplosionData(false, 0, 0, false, 30, false);
 
-    private ResourceLocation ammoId = DefaultAssets.EMPTY_AMMO_ID;
+    private Identifier ammoId = DefaultAssets.EMPTY_AMMO_ID;
     private int life = 200;
     @Deprecated
     private float speed = 1;
@@ -137,13 +141,11 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
     // 曳光弹
     private boolean isTracerAmmo;
     // 以下几个是只对客户端有用的曳光弹数据
-    private float cameraXRot;
-    private float cameraYRot;
-    private Vector3f firstPersonRenderOffset;
+    private FirstPersonTracerAnchor firstPersonTracerAnchor;
     // 发射的枪械 ID
-    private ResourceLocation gunId;
+    private Identifier gunId;
     // 枪械display ID
-    private ResourceLocation gunDisplayId;
+    private Identifier gunDisplayId;
     private float armorIgnore;
     private float headShot;
     private float shotDamageMultiplier = 1f;
@@ -157,17 +159,17 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         this.setPos(x, y, z);
     }
 
-    public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, ResourceLocation ammoId, ResourceLocation gunId,
-                               ResourceLocation gunDisplayId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
+    public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, Identifier ammoId, Identifier gunId,
+                               Identifier gunDisplayId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
         this(TYPE, worldIn, throwerIn, gunItem, ammoId, gunId, gunDisplayId, isTracerAmmo, gunData, bulletData);
     }
 
-    public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, ResourceLocation ammoId, ResourceLocation gunId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
+    public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, Identifier ammoId, Identifier gunId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
         this(TYPE, worldIn, throwerIn, gunItem, ammoId, gunId, DefaultAssets.DEFAULT_GUN_DISPLAY_ID, isTracerAmmo, gunData, bulletData);
     }
 
     protected EntityKineticBullet(EntityType<? extends Projectile> type, Level worldIn, LivingEntity throwerIn, ItemStack gunItem,
-                                  ResourceLocation ammoId, ResourceLocation gunId, ResourceLocation gunDisplayId,
+                                  Identifier ammoId, Identifier gunId, Identifier gunDisplayId,
                                   boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
         this(type, throwerIn.getX(), throwerIn.getEyeY() - (double) 0.1F, throwerIn.getZ(), worldIn);
         this.setOwner(throwerIn);
@@ -236,7 +238,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
     }
 
     @Override
-    protected void defineSynchedData() {
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
     }
 
     @Override
@@ -245,8 +247,10 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         // 调用 TaC 子弹服务器事件
         this.onBulletTick();
         // 粒子效果
-        if (this.level().isClientSide) {
-            DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> AmmoParticleSpawner.addParticle(this));
+        if (this.level().isClientSide()) {
+            if (FMLEnvironment.getDist() == Dist.CLIENT) {
+                AmmoParticleSpawner.addParticle(this);
+            }
         }
         // 子弹模型的旋转与抛物线
         Vec3 movement = this.getDeltaMovement();
@@ -409,8 +413,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         float headShotMultiplier = Math.max(this.headShot, 0);
         // 发布Pre事件
         var preEvent = new EntityHurtByGunEvent.Pre(this, entity, attacker, this.gunId, this.gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER);
-        var cancelled = MinecraftForge.EVENT_BUS.post(preEvent);
-        if (cancelled) {
+        if (NeoForge.EVENT_BUS.post(preEvent).isCanceled()) {
             return;
         }
         // 刷新由Pre事件修改后的参数
@@ -428,7 +431,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         }
         // 点燃
         if (this.igniteEntity && AmmoConfig.IGNITE_ENTITY.get()) {
-            entity.setSecondsOnFire(this.igniteEntityTime);
+            entity.igniteForSeconds(this.igniteEntityTime);
             // 给予粒子效果
             if (this.level() instanceof ServerLevel serverLevel) {
                 serverLevel.sendParticles(ParticleTypes.LAVA, entity.getX(), entity.getY() + entity.getEyeHeight(), entity.getZ(), 1, 0, 0, 0, 0);
@@ -461,14 +464,14 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         // 只对 LivingEntity 执行击杀判定
         if (parts.core() instanceof LivingEntity livingCore) {
             // 事件同步，从服务端到客户端
-            if (!level().isClientSide) {
+            if (!level().isClientSide()) {
                 int attackerId = attacker == null ? 0 : attacker.getId();
                 // 如果生物死了
                 if (livingCore.isDeadOrDying()) {
-                    MinecraftForge.EVENT_BUS.post(new EntityKillByGunEvent(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER));
+                    NeoForge.EVENT_BUS.post(new EntityKillByGunEvent(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER));
                     NetworkHandler.sendToDimension(new ServerMessageGunKill(getId(), livingCore.getId(), attackerId, newGunId, gunDisplayId, damage, headshot, headShotMultiplier), livingCore);
                 } else {
-                    MinecraftForge.EVENT_BUS.post(new EntityHurtByGunEvent.Post(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER));
+                    NeoForge.EVENT_BUS.post(new EntityHurtByGunEvent.Post(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER));
                     NetworkHandler.sendToDimension(new ServerMessageGunHurt(getId(), livingCore.getId(), attackerId, newGunId, gunDisplayId, damage, headshot, headShotMultiplier), livingCore);
                 }
             }
@@ -483,7 +486,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         Vec3 hitVec = result.getLocation();
         // 触发事件
         // 提前触发事件以让事件可以取消原版的命中行为（例如敲钟，打倒靶子等）
-        if (MinecraftForge.EVENT_BUS.post(new AmmoHitBlockEvent(this.level(), result, this.level().getBlockState(pos), this))) {
+        if (NeoForge.EVENT_BUS.post(new AmmoHitBlockEvent(this.level(), result, this.level().getBlockState(pos), this)).isCanceled()) {
             return;
         }
         super.onHitBlock(result);
@@ -559,11 +562,12 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
     private Pair<DamageSource, DamageSource> createDamageSources(MaybeMultipartEntity parts) {
         DamageSource source1, source2;
         var hitPartType = parts.hitPart().getType();
-        var directCause = hitPartType.is(PRETEND_MELEE_DAMAGE_ON) ? this.getOwner() : this;
+        var hitPartHolder = hitPartType.builtInRegistryHolder();
+        var directCause = hitPartHolder.is(PRETEND_MELEE_DAMAGE_ON) ? this.getOwner() : this;
         // 给末影人造成伤害
-        if (hitPartType.is(USE_MAGIC_DAMAGE_ON)) {
+        if (hitPartHolder.is(USE_MAGIC_DAMAGE_ON)) {
             source1 = source2 = this.damageSources().indirectMagic(this, getOwner());
-        } else if (hitPartType.is(USE_VOID_DAMAGE_ON)) {
+        } else if (hitPartHolder.is(USE_VOID_DAMAGE_ON)) {
             source1 = ModDamageTypes.Sources.bulletVoid(this.level().registryAccess(), directCause, this.getOwner(), false);
             source2 = ModDamageTypes.Sources.bulletVoid(this.level().registryAccess(), directCause, this.getOwner(), true);
         } else {
@@ -590,12 +594,12 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
     }
 
     @Override
-    public Packet<ClientGamePacketListener> getAddEntityPacket() {
-        return NetworkHooks.getEntitySpawningPacket(this);
+    public Packet<ClientGamePacketListener> getAddEntityPacket(ServerEntity serverEntity) {
+        return super.getAddEntityPacket(serverEntity);
     }
 
     @Override
-    public void writeSpawnData(FriendlyByteBuf buffer) {
+    public void writeSpawnData(RegistryFriendlyByteBuf buffer) {
         buffer.writeFloat(getXRot());
         buffer.writeFloat(getYRot());
         buffer.writeDouble(getDeltaMovement().x);
@@ -603,7 +607,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         buffer.writeDouble(getDeltaMovement().z);
         Entity entity = getOwner();
         buffer.writeInt(entity != null ? entity.getId() : 0);
-        buffer.writeResourceLocation(ammoId);
+        buffer.writeIdentifier(ammoId);
         buffer.writeFloat(this.gravity);
         buffer.writeBoolean(this.explosion);
         buffer.writeBoolean(this.igniteEntity);
@@ -615,12 +619,12 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         buffer.writeFloat(this.friction);
         buffer.writeInt(this.pierce);
         buffer.writeBoolean(this.isTracerAmmo);
-        buffer.writeResourceLocation(this.gunId);
-        buffer.writeResourceLocation(this.gunDisplayId);
+        buffer.writeIdentifier(this.gunId);
+        buffer.writeIdentifier(this.gunDisplayId);
     }
 
     @Override
-    public void readSpawnData(FriendlyByteBuf additionalData) {
+    public void readSpawnData(RegistryFriendlyByteBuf additionalData) {
         setXRot(additionalData.readFloat());
         setYRot(additionalData.readFloat());
         setDeltaMovement(additionalData.readDouble(), additionalData.readDouble(), additionalData.readDouble());
@@ -628,7 +632,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         if (entity != null) {
             this.setOwner(entity);
         }
-        this.ammoId = additionalData.readResourceLocation();
+        this.ammoId = additionalData.readIdentifier();
         this.gravity = additionalData.readFloat();
         this.explosion = additionalData.readBoolean();
         this.igniteEntity = additionalData.readBoolean();
@@ -640,19 +644,19 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         this.friction = additionalData.readFloat();
         this.pierce = additionalData.readInt();
         this.isTracerAmmo = additionalData.readBoolean();
-        this.gunId = additionalData.readResourceLocation();
-        this.gunDisplayId = additionalData.readResourceLocation();
+        this.gunId = additionalData.readIdentifier();
+        this.gunDisplayId = additionalData.readIdentifier();
     }
 
-    public ResourceLocation getAmmoId() {
+    public Identifier getAmmoId() {
         return ammoId;
     }
 
-    public ResourceLocation getGunId() {
+    public Identifier getGunId() {
         return gunId;
     }
 
-    public ResourceLocation getGunDisplayId() {
+    public Identifier getGunDisplayId() {
         return gunDisplayId;
     }
 
@@ -664,36 +668,21 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
         return this.random;
     }
 
-    public float getCameraYRot() {
-        return cameraYRot;
+    @Nullable
+    public FirstPersonTracerAnchor getFirstPersonTracerAnchor() {
+        return firstPersonTracerAnchor;
     }
 
-    public void setCameraYRot(float cameraYRot) {
-        this.cameraYRot = cameraYRot;
-    }
-
-    public float getCameraXRot() {
-        return cameraXRot;
-    }
-
-    public void setCameraXRot(float cameraXRot) {
-        this.cameraXRot = cameraXRot;
-    }
-
-    public Vector3f getFirstPersonRenderOffset() {
-        return firstPersonRenderOffset;
-    }
-
-    public void setFirstPersonRenderOffset(Vector3f originRenderOffset) {
-        this.firstPersonRenderOffset = originRenderOffset;
+    public void setFirstPersonTracerAnchor(@Nullable FirstPersonTracerAnchor firstPersonTracerAnchor) {
+        this.firstPersonTracerAnchor = firstPersonTracerAnchor;
     }
 
     public Optional<float[]> getTracerColorOverride() {
         var pd = getPersistentData();
-        if (!pd.contains(TRACER_COLOR_OVERRIDER_KEY, Tag.TAG_INT_ARRAY)) {
+        if (!ItemStackNbtHelper.contains(pd, TRACER_COLOR_OVERRIDER_KEY, Tag.TAG_INT_ARRAY)) {
             return Optional.empty();
         } else {
-            var ints = pd.getIntArray(TRACER_COLOR_OVERRIDER_KEY);
+            var ints = ItemStackNbtHelper.getIntArrayOrEmpty(pd, TRACER_COLOR_OVERRIDER_KEY);
             // 请避免使用 1 或者 2 个值的数组。
             // 此处 1~2 个值的分支仅为优雅地处理异常情况来代替崩溃所作的措施 :(
             switch (ints.length) {
@@ -727,7 +716,7 @@ public class EntityKineticBullet extends Projectile implements IEntityAdditional
 
     public float getTracerSizeOverride() {
         var pd = getPersistentData();
-        return pd.contains(TRACER_SIZE_OVERRIDER_KEY, Tag.TAG_ANY_NUMERIC) ? pd.getFloat(TRACER_SIZE_OVERRIDER_KEY) : 1;
+        return ItemStackNbtHelper.contains(pd, TRACER_SIZE_OVERRIDER_KEY, ItemStackNbtHelper.TAG_ANY_NUMERIC) ? ItemStackNbtHelper.getFloat(pd, TRACER_SIZE_OVERRIDER_KEY) : 1;
     }
 
     @Override

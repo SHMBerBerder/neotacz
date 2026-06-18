@@ -3,17 +3,17 @@ package com.tacz.guns.client.gameplay;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.event.common.GunDrawEvent;
 import com.tacz.guns.api.item.IGun;
-import com.tacz.guns.client.renderer.item.AnimateGeoItemRenderer;
+import com.tacz.guns.client.renderer.item.TaczItemRenderers;
 import com.tacz.guns.client.sound.SoundPlayManager;
+import com.tacz.guns.mixin.client.MultiPlayerGameModeAccessor;
 import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.ClientMessagePlayerDrawGun;
 import com.tacz.guns.resource.modifier.AttachmentPropertyManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.client.extensions.common.IClientItemExtensions;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.fml.LogicalSide;
 
 public class LocalPlayerDraw {
     private final LocalPlayerDataHolder data;
@@ -42,11 +42,12 @@ public class LocalPlayerDraw {
         long putAwayTime = Math.abs(drawTime);
 
         // 发包通知服务器
-        if (Minecraft.getInstance().gameMode != null) {
-            Minecraft.getInstance().gameMode.ensureHasSentCarriedItem();
+        var gameMode = Minecraft.getInstance().gameMode;
+        if (gameMode != null) {
+            ((MultiPlayerGameModeAccessor) gameMode).tacz$ensureHasSentCarriedItem();
         }
         NetworkHandler.CHANNEL.sendToServer(new ClientMessagePlayerDrawGun());
-        MinecraftForge.EVENT_BUS.post(new GunDrawEvent(player, lastItem, currentItem, LogicalSide.CLIENT));
+        NeoForge.EVENT_BUS.post(new GunDrawEvent(player, lastItem, currentItem, LogicalSide.CLIENT));
 
 //        // 不处于收枪状态时才能收枪
 //        if (drawTime >= 0) {
@@ -78,17 +79,19 @@ public class LocalPlayerDraw {
     }
 
     private void doPutAway(ItemStack lastItem, long putAwayTime) {
-        if (IClientItemExtensions.of(lastItem.getItem()).getCustomRenderer() instanceof AnimateGeoItemRenderer<?, ?> renderer) {
+        TaczItemRenderers.getAnimated(lastItem).ifPresent(renderer -> {
             renderer.tryExit(lastItem, putAwayTime);
             TimelessAPI.getGunDisplay(lastItem).ifPresent(display -> {
                 SoundPlayManager.stopPlayGunSound();
                 SoundPlayManager.playPutAwaySound(player, display);
             });
-        }
+        });
     }
 
     private long getDrawTime(ItemStack lastItem, IGun lastGun, long drawTime) {
-        if (IClientItemExtensions.of(lastItem.getItem()).getCustomRenderer() instanceof AnimateGeoItemRenderer<?, ?> renderer) {
+        var rendererOptional = TaczItemRenderers.getAnimated(lastItem);
+        if (rendererOptional.isPresent()) {
+            var renderer = rendererOptional.get();
             long putAwayTime = renderer.getPutAwayTime(lastItem);
             if (drawTime > putAwayTime) {
                 drawTime = putAwayTime;

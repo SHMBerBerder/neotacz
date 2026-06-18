@@ -3,8 +3,6 @@ package com.tacz.guns.api.modifier;
 import com.tacz.guns.resource.modifier.AttachmentCacheProperty;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Collections;
@@ -61,7 +59,6 @@ public interface IAttachmentModifier<T, K> {
     /**
      * 获取改装界面的配置属性条相关数据
      */
-    @OnlyIn(Dist.CLIENT)
     default List<DiagramsData> getPropertyDiagramsData(ItemStack gunItem, GunData gunData, AttachmentCacheProperty cacheProperty) {
         return Collections.emptyList();
     }
@@ -69,7 +66,6 @@ public interface IAttachmentModifier<T, K> {
     /**
      * 用于获取改装界面的配置属性条个数，用于按钮的偏移
      */
-    @OnlyIn(Dist.CLIENT)
     default int getDiagramsDataSize() {
         return 0;
     }
@@ -86,7 +82,6 @@ public interface IAttachmentModifier<T, K> {
      * @param defaultString    等于默认数值时，显示的文本
      * @param positivelyBetter true 时，大于默认数值显示为绿色，否则显示红色
      */
-    @OnlyIn(Dist.CLIENT)
     record DiagramsData(double defaultPercent, double modifierPercent, Number modifier,
                         String titleKey, String positivelyString,
                         String negativeString, String defaultString,

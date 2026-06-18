@@ -6,7 +6,6 @@ import com.tacz.guns.init.ModCreativeTabs;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.drawable.IDrawable;
-import mezz.jei.api.gui.drawable.IDrawableStatic;
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.recipe.IFocusGroup;
@@ -15,7 +14,7 @@ import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
@@ -24,23 +23,23 @@ import java.util.List;
 public class AttachmentQueryCategory implements IRecipeCategory<AttachmentQueryEntry> {
     public static final RecipeType<AttachmentQueryEntry> ATTACHMENT_QUERY = RecipeType.create(GunMod.MOD_ID, "attachment_query", AttachmentQueryEntry.class);
     public static final int MAX_GUN_SHOW_COUNT = 60;
+    private static final int WIDTH = 160;
+    private static final int HEIGHT = 145;
     private static final Component TITLE = Component.translatable("jei.tacz.attachment_query.title");
-    private final IDrawableStatic bgDraw;
     private final IDrawable slotDraw;
     private final IDrawable iconDraw;
 
     public AttachmentQueryCategory(IGuiHelper guiHelper) {
-        this.bgDraw = guiHelper.createBlankDrawable(160, 145);
         this.slotDraw = guiHelper.getSlotDrawable();
         this.iconDraw = guiHelper.createDrawableIngredient(VanillaTypes.ITEM_STACK, ModCreativeTabs.ATTACHMENT_SCOPE_TAB.get().getIconItem());
     }
 
     @Override
-    public void draw(AttachmentQueryEntry entry, IRecipeSlotsView recipeSlotsView, GuiGraphics guiGraphics, double mouseX, double mouseY) {
+    public void draw(AttachmentQueryEntry entry, IRecipeSlotsView recipeSlotsView, GuiGraphicsExtractor guiGraphics, double mouseX, double mouseY) {
         List<ItemStack> extraAllowGunStacks = entry.getExtraAllowGunStacks();
         if (!extraAllowGunStacks.isEmpty()) {
             Font font = Minecraft.getInstance().font;
-            guiGraphics.drawString(font, Component.translatable("jei.tacz.attachment_query.more"), 128, 134, 0x555555, false);
+            guiGraphics.text(font, Component.translatable("jei.tacz.attachment_query.more"), 128, 134, 0x555555, false);
         }
     }
 
@@ -82,9 +81,13 @@ public class AttachmentQueryCategory implements IRecipeCategory<AttachmentQueryE
     }
 
     @Override
-    @SuppressWarnings("removal")
-    public IDrawable getBackground() {
-        return bgDraw;
+    public int getWidth() {
+        return WIDTH;
+    }
+
+    @Override
+    public int getHeight() {
+        return HEIGHT;
     }
 
     @Override

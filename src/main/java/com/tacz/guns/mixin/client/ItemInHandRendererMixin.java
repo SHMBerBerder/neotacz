@@ -6,9 +6,9 @@ import com.tacz.guns.api.client.other.KeepingItemRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.ItemInHandRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.common.MinecraftForge;
+import net.neoforged.neoforge.common.NeoForge;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -16,13 +16,13 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ItemInHandRenderer.class)
+@Mixin(value = ItemInHandRenderer.class, remap = false)
 public class ItemInHandRendererMixin implements KeepingItemRenderer {
-    @Shadow
+    @Shadow(remap = false)
     private float mainHandHeight;
-    @Shadow
+    @Shadow(remap = false)
     private float oMainHandHeight;
-    @Shadow
+    @Shadow(remap = false)
     private ItemStack mainHandItem;
     @Unique
     private ItemStack tacz$KeepItem;
@@ -31,12 +31,12 @@ public class ItemInHandRendererMixin implements KeepingItemRenderer {
     @Unique
     private long tacz$KeepTimestamp;
 
-    @Inject(method = "renderHandsWithItems", at = @At("HEAD"))
-    public void beforeHandRender(float pPartialTicks, PoseStack pMatrixStack, MultiBufferSource.BufferSource pBuffer, LocalPlayer pPlayerEntity, int pCombinedLight, CallbackInfo ci) {
-        MinecraftForge.EVENT_BUS.post(new BeforeRenderHandEvent(pMatrixStack));
+    @Inject(method = "submitHandsWithItems", at = @At("HEAD"), remap = false)
+    public void beforeHandRender(float pPartialTicks, PoseStack pMatrixStack, SubmitNodeCollector submitNodeCollector, LocalPlayer pPlayerEntity, int pCombinedLight, CallbackInfo ci) {
+        NeoForge.EVENT_BUS.post(new BeforeRenderHandEvent(pMatrixStack));
     }
 
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = "tick", at = @At("HEAD"), remap = false)
     public void cancelEquippedProgress(CallbackInfo ci) {
 //        if (Minecraft.getInstance().player == null) {
 //            return;

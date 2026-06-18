@@ -5,7 +5,6 @@ import com.tacz.guns.crafting.GunSmithTableRecipe;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.drawable.IDrawable;
-import mezz.jei.api.gui.drawable.IDrawableStatic;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.recipe.IFocusGroup;
 import mezz.jei.api.recipe.RecipeIngredientRole;
@@ -19,14 +18,14 @@ import java.util.Collections;
 import java.util.List;
 
 public class GunSmithTableCategory implements IRecipeCategory<GunSmithTableRecipe> {
+    private static final int WIDTH = 160;
+    private static final int HEIGHT = 44;
     private final Component title;
-    private final IDrawableStatic bgDraw;
     private final IDrawable slotDraw;
     private final IDrawable iconDraw;
     private final RecipeType<GunSmithTableRecipe> type;
 
     public GunSmithTableCategory(IGuiHelper guiHelper, ItemStack icon, RecipeType<GunSmithTableRecipe> type, Component title) {
-        this.bgDraw = guiHelper.createBlankDrawable(160, 40);
         this.slotDraw = guiHelper.getSlotDrawable();
         this.iconDraw = guiHelper.createDrawableIngredient(VanillaTypes.ITEM_STACK, icon);
         this.type = type;
@@ -66,7 +65,7 @@ public class GunSmithTableCategory implements IRecipeCategory<GunSmithTableRecip
     private List<ItemStack> getInput(List<GunSmithTableIngredient> inputs, int index) {
         if (index < inputs.size()) {
             GunSmithTableIngredient ingredient = inputs.get(index);
-            ItemStack[] items = ingredient.getIngredient().getItems();
+            ItemStack[] items = ingredient.getIngredient().items().map(ItemStack::new).toArray(ItemStack[]::new);
             Arrays.stream(items).forEach(stack -> stack.setCount(ingredient.getCount()));
             return List.of(items);
         }
@@ -79,9 +78,13 @@ public class GunSmithTableCategory implements IRecipeCategory<GunSmithTableRecip
     }
 
     @Override
-    @SuppressWarnings("removal")
-    public IDrawable getBackground() {
-        return bgDraw;
+    public int getWidth() {
+        return WIDTH;
+    }
+
+    @Override
+    public int getHeight() {
+        return HEIGHT;
     }
 
     @Override

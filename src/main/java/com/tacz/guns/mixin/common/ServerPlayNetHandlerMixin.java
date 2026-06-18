@@ -11,12 +11,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ServerGamePacketListenerImpl.class)
+@Mixin(value = ServerGamePacketListenerImpl.class, remap = false)
 public class ServerPlayNetHandlerMixin {
-    @Shadow
+    @Shadow(remap = false)
     public ServerPlayer player;
 
-    @Inject(method = "handlePlayerAction", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;stopUsingItem()V"))
+    @Inject(method = "handlePlayerAction", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;stopUsingItem()V", remap = false), remap = false)
     public void applySwapOffhandDraw(ServerboundPlayerActionPacket packetIn, CallbackInfo ci) {
         player.inventoryMenu.broadcastChanges();
         NetworkHandler.sendToClientPlayer(new ServerMessageSwapItem(), player);

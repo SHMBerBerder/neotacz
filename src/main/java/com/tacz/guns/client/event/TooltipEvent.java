@@ -1,23 +1,34 @@
 package com.tacz.guns.client.event;
 
+import com.tacz.guns.GunMod;
+import com.tacz.guns.api.TimelessAPI;
+import com.tacz.guns.api.item.IAttachment;
+import com.tacz.guns.api.item.IGun;
+import com.tacz.guns.client.tooltip.AttachmentTooltipTextBuilder;
+import net.neoforged.fml.common.EventBusSubscriber;
+
 import com.tacz.guns.api.item.nbt.AmmoItemDataAccessor;
 import com.tacz.guns.api.item.nbt.AttachmentItemDataAccessor;
 import com.tacz.guns.api.item.nbt.BlockItemDataAccessor;
 import com.tacz.guns.api.item.nbt.GunItemDataAccessor;
+import com.tacz.guns.client.tooltip.GunTooltipTextBuilder;
 import com.tacz.guns.config.client.RenderConfig;
 import com.tacz.guns.init.ModItems;
+import com.tacz.guns.item.GunSmithTableItem;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.event.entity.player.ItemTooltipEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import net.neoforged.bus.api.SubscribeEvent;
 
 
-@Mod.EventBusSubscriber
+@EventBusSubscriber(value = Dist.CLIENT, modid = GunMod.MOD_ID)
 public class TooltipEvent {
     @SubscribeEvent
     public static void onTooltip(ItemTooltipEvent event) {
+        addTaczBodyText(event);
         if (event.getFlags().isAdvanced() && RenderConfig.ENABLE_TACZ_ID_IN_TOOLTIP.get()) {
             if (event.getItemStack().getItem() instanceof GunItemDataAccessor item) {
                 event.getToolTip().add(formatTooltip(GunItemDataAccessor.GUN_ID_TAG, item.getGunId(event.getItemStack())));
@@ -31,7 +42,28 @@ public class TooltipEvent {
         }
     }
 
-    public static Component formatTooltip(String key, ResourceLocation value) {
+    private static void addTaczBodyText(ItemTooltipEvent event) {
+        ItemStack stack = event.getItemStack();
+        if (stack.getItem() instanceof IGun iGun) {
+            TimelessAPI.getCommonGunIndex(iGun.getGunId(stack))
+                    .ifPresent(gunIndex -> GunTooltipTextBuilder.appendGunText(stack, iGun, gunIndex, event.getToolTip()::add));
+            return;
+        }
+        if (stack.getItem() instanceof GunSmithTableItem tableItem) {
+            GunTooltipTextBuilder.appendBlockText(tableItem.getBlockId(stack), event.getToolTip()::add);
+            return;
+        }
+        if (stack.getItem() instanceof IAttachment iAttachment) {
+            AttachmentTooltipTextBuilder.appendAttachmentText(
+                    stack,
+                    iAttachment.getAttachmentId(stack),
+                    iAttachment.getType(stack),
+                    event.getToolTip()::add
+            );
+        }
+    }
+
+    public static Component formatTooltip(String key, Identifier value) {
         return Component.literal(String.format("%s: \"%s\"", key, value)).withStyle(ChatFormatting.DARK_GRAY);
     }
 }

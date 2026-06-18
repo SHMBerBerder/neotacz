@@ -5,22 +5,26 @@ import com.mojang.math.Axis;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.client.model.BedrockAmmoModel;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
+import com.tacz.guns.client.renderer.BedrockSubmitUtils;
 import com.tacz.guns.client.renderer.item.GunItemRendererWrapper;
 import com.tacz.guns.client.resource.GunDisplayInstance;
 import com.tacz.guns.client.resource.InternalAssetLoader;
 import com.tacz.guns.config.client.RenderConfig;
 import com.tacz.guns.entity.EntityKineticBullet;
-import net.minecraft.client.Camera;
-import net.minecraft.client.Minecraft;
+import com.tacz.guns.entity.FirstPersonTracerAnchor;
+import java.util.Objects;
+import java.util.Optional;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -28,12 +32,11 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3f;
 
-import java.util.Objects;
-import java.util.Optional;
+public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet, EntityBulletRenderer.BulletRenderState> {
+    private static final double LEGACY_TRACER_HIDE_DISTANCE = 2.0D;
+    private static final double FIRST_PERSON_TRACER_HIDE_DISTANCE = 3.0D;
 
-public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet> {
     public EntityBulletRenderer(EntityRendererProvider.Context pContext) {
         super(pContext);
     }
@@ -43,93 +46,182 @@ public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet> {
     }
 
     @Override
-    public void render(EntityKineticBullet bullet, float entityYaw, float partialTicks, PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
-        ResourceLocation gunId = bullet.getGunId();
-        ResourceLocation gunDisplayId = bullet.getGunDisplayId();
-        Optional<GunDisplayInstance> display = TimelessAPI.getGunDisplay(gunDisplayId, gunId);
+    public BulletRenderState createRenderState() {
+        return new BulletRenderState();
+    }
+
+    @Override
+    public void extractRenderState(EntityKineticBullet bullet, BulletRenderState state, float partialTicks) {
+        super.extractRenderState(bullet, state, partialTicks);
+        state.gunId = bullet.getGunId();
+        state.gunDisplayId = bullet.getGunDisplayId();
+        state.ammoId = bullet.getAmmoId();
+        state.tracerColorOverride = bullet.getTracerColorOverride().orElse(null);
+        state.tracerAmmo = bullet.isTracerAmmo();
+        state.tracerSize = bullet.getTracerSizeOverride();
+        state.xRot = Mth.lerp(partialTicks, bullet.xRotO, bullet.getXRot());
+        state.yRot = Mth.lerp(partialTicks, bullet.yRotO, bullet.getYRot());
+        state.deltaMovement = bullet.getDeltaMovement();
+        state.bulletPosition = bullet.getPosition(partialTicks);
+        state.tickCount = bullet.tickCount;
+
+        Entity shooter = bullet.getOwner();
+        state.hasShooter = shooter != null;
+        state.shooterIsLocalPlayer = shooter instanceof LocalPlayer
+                && this.entityRenderDispatcher.options.getCameraType().isFirstPerson();
+        state.shooterEyePosition = shooter == null ? Vec3.ZERO : shooter.getEyePosition(partialTicks);
+        state.shooterCurrentEyePosition = shooter == null ? Vec3.ZERO : shooter.getEyePosition();
+        state.bulletId = bullet.getId();
+        state.firstPersonTracerAnchor = null;
+        if (state.shooterIsLocalPlayer) {
+            FirstPersonTracerAnchor anchor = bullet.getFirstPersonTracerAnchor();
+            if (anchor == null || !anchor.matches(state.gunId, state.gunDisplayId, shooter.getId())) {
+                anchor = GunItemRendererWrapper.copyFirstPersonTracerAnchor(state.gunId, state.gunDisplayId, shooter.getId()).orElse(null);
+                if (anchor != null && anchor.isFinite()) {
+                    bullet.setFirstPersonTracerAnchor(anchor);
+                } else {
+                    anchor = null;
+                }
+            }
+            if (anchor != null && anchor.isFinite()) {
+                state.firstPersonTracerAnchor = anchor;
+            }
+        }
+        BulletTracerDebug.bulletExtract(
+                state.bulletId,
+                state.tickCount,
+                state.shooterIsLocalPlayer,
+                state.gunId,
+                state.gunDisplayId,
+                state.ammoId,
+                state.bulletPosition,
+                state.deltaMovement,
+                state.xRot,
+                state.yRot,
+                state.firstPersonTracerAnchor,
+                state.firstPersonTracerAnchor != null
+        );
+    }
+
+    @Override
+    public void submit(BulletRenderState state, PoseStack poseStack, SubmitNodeCollector submitNodeCollector, CameraRenderState camera) {
+        Optional<GunDisplayInstance> display = TimelessAPI.getGunDisplay(state.gunDisplayId, state.gunId);
         if (display.isEmpty()) {
+            super.submit(state, poseStack, submitNodeCollector, camera);
             return;
         }
-        float @Nullable [] tracerColor = bullet.getTracerColorOverride().orElse(display.get().getTracerColor());
-        ResourceLocation ammoId = bullet.getAmmoId();
-        TimelessAPI.getClientAmmoIndex(ammoId).ifPresent(ammoIndex -> {
+
+        float @Nullable [] tracerColor = state.tracerColorOverride != null ? state.tracerColorOverride : display.get().getTracerColor();
+        TimelessAPI.getClientAmmoIndex(state.ammoId).ifPresent(ammoIndex -> {
             BedrockAmmoModel ammoEntityModel = ammoIndex.getAmmoEntityModel();
-            ResourceLocation textureLocation = ammoIndex.getAmmoEntityTextureLocation();
+            Identifier textureLocation = ammoIndex.getAmmoEntityTextureLocation();
             if (ammoEntityModel != null && textureLocation != null) {
-                poseStack.mulPose(Axis.YP.rotationDegrees(Mth.lerp(partialTicks, bullet.yRotO, bullet.getYRot()) - 180.0F));
-                poseStack.mulPose(Axis.XP.rotationDegrees(Mth.lerp(partialTicks, bullet.xRotO, bullet.getXRot())));
                 poseStack.pushPose();
+                poseStack.mulPose(Axis.YP.rotationDegrees(state.yRot - 180.0F));
+                poseStack.mulPose(Axis.XP.rotationDegrees(state.xRot));
                 poseStack.translate(0, 1.5, 0);
                 poseStack.scale(-1, -1, 1);
-                ammoEntityModel.render(poseStack, ItemDisplayContext.GROUND, RenderType.entityTranslucentCull(textureLocation), packedLight, OverlayTexture.NO_OVERLAY);
+                BedrockSubmitUtils.submitModel(
+                        submitNodeCollector,
+                        poseStack,
+                        RenderTypes.entityTranslucent(textureLocation),
+                        ammoEntityModel,
+                        ItemDisplayContext.GROUND,
+                        state.lightCoords,
+                        OverlayTexture.NO_OVERLAY
+                );
                 poseStack.popPose();
             }
 
-            // 曳光弹发光
-            if (bullet.isTracerAmmo()) {
+            if (state.tracerAmmo) {
                 float[] actualTracerColor = Objects.requireNonNullElse(tracerColor, ammoIndex.getTracerColor());
-                renderTracerAmmo(bullet, actualTracerColor, partialTicks, poseStack, packedLight);
+                renderTracerAmmo(state, actualTracerColor, poseStack, submitNodeCollector, camera);
             }
         });
+        super.submit(state, poseStack, submitNodeCollector, camera);
     }
 
-    public void renderTracerAmmo(EntityKineticBullet bullet, float[] tracerColor, float partialTicks, PoseStack poseStack, int packedLight) {
+    private void renderTracerAmmo(BulletRenderState state, float[] tracerColor, PoseStack poseStack, SubmitNodeCollector submitNodeCollector, CameraRenderState camera) {
         getModel().ifPresent(model -> {
-            Entity shooter = bullet.getOwner();
-            if (shooter == null) {
+            if (!state.hasShooter) {
                 return;
             }
-            boolean isFirstPerson = this.entityRenderDispatcher.options.getCameraType().isFirstPerson() && shooter instanceof LocalPlayer;
-            if (isFirstPerson && !RenderConfig.FIRST_PERSON_BULLET_TRACER_ENABLE.get()) {
+            if (state.shooterIsLocalPlayer && !RenderConfig.FIRST_PERSON_BULLET_TRACER_ENABLE.get()) {
                 return;
             }
-            poseStack.pushPose();
-            {
-                float width = 0.005f;
-                Vec3 bulletPosition = bullet.getPosition(partialTicks);
-                double trailLength = 0.85 * bullet.getDeltaMovement().length();
-                double disToEye = bulletPosition.distanceTo(shooter.getEyePosition(partialTicks));
-                trailLength = Math.min(trailLength, disToEye * 0.8);
 
-                if (isFirstPerson) {
-                    // 第一人称渲染自己的曳光弹的时候需要应用偏移
-                    Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-                    Vector3f offset = bullet.getFirstPersonRenderOffset();
-                    if (offset == null) {
-                        offset = new Vector3f(GunItemRendererWrapper.muzzleRenderOffset);
-                        bullet.setCameraXRot(camera.getXRot());
-                        bullet.setCameraYRot(camera.getYRot());
-                        bullet.setFirstPersonRenderOffset(offset);
-                    }
-                    // 按照生存时间减少曳光弹的偏移，避免渲染位置距离落点太远
-                    double offsetReducer = Math.max(0, (50 - disToEye)) / 50;
-                    // 摄像机旋转
-                    poseStack.mulPose(Axis.YN.rotationDegrees(bullet.getCameraYRot() + 180f));
-                    poseStack.mulPose(Axis.XN.rotationDegrees(bullet.getCameraXRot()));
-                    // 应用偏移
-                    poseStack.translate(offset.x * offsetReducer, offset.y * offsetReducer, offset.z * offsetReducer);
-                    // 逆转摄像机旋转
-                    poseStack.mulPose(Axis.XP.rotationDegrees(bullet.getCameraXRot()));
-                    poseStack.mulPose(Axis.YP.rotationDegrees(bullet.getCameraYRot() + 180f));
-                }
-                // 说是 override 其实默认值是 1
-                // 所以这里直接乘也没关系
-                width *= bullet.getTracerSizeOverride();
-                width *= (float) Math.max(1.0, disToEye / 3.5);
-                poseStack.mulPose(Axis.YP.rotationDegrees(Mth.lerp(partialTicks, bullet.yRotO, bullet.getYRot()) - 180.0F));
-                poseStack.mulPose(Axis.XP.rotationDegrees(Mth.lerp(partialTicks, bullet.xRotO, bullet.getXRot())));
-                poseStack.translate(0, isFirstPerson ? 0 : -0.2, trailLength / 2.0);
-                poseStack.scale(width, width, (float) trailLength);
-                // 距离两格外才渲染，只在前 5 tick 判定
-                double bulletDistance = bulletPosition.distanceTo(shooter.getEyePosition());
-                if (bullet.tickCount >= 5 || bulletDistance > 2) {
-                    RenderType type = RenderType.energySwirl(InternalAssetLoader.DEFAULT_BULLET_TEXTURE, 15, 15);
-                    model.render(poseStack, ItemDisplayContext.NONE, type, packedLight, OverlayTexture.NO_OVERLAY,
-                            tracerColor[0], tracerColor[1], tracerColor[2], 1);
-                }
+            float width = 0.005f;
+            double trailLength = 0.85 * state.deltaMovement.length();
+            double disToEye = state.bulletPosition.distanceTo(state.shooterEyePosition);
+            double bulletDistance = state.bulletPosition.distanceTo(state.shooterCurrentEyePosition);
+            trailLength = Math.min(trailLength, disToEye * 0.8);
+            double offsetReducer = 0.0;
+            Vec3 appliedOffset = Vec3.ZERO;
+            Vec3 renderStartWorld;
+            Vec3 renderEndWorld;
+
+            poseStack.pushPose();
+            if (state.shooterIsLocalPlayer && state.firstPersonTracerAnchor != null) {
+                offsetReducer = Math.max(0, (50 - disToEye)) / 50;
+                appliedOffset = state.firstPersonTracerAnchor.worldOffset().scale(offsetReducer);
+                poseStack.translate(
+                        appliedOffset.x,
+                        appliedOffset.y,
+                        appliedOffset.z
+                );
+            }
+            renderStartWorld = state.bulletPosition.add(appliedOffset);
+            Vec3 tracerDirection = state.deltaMovement.lengthSqr() > 1.0E-8 ? state.deltaMovement.normalize() : Vec3.ZERO;
+            renderEndWorld = renderStartWorld.add(tracerDirection.scale(trailLength));
+            double nearestSegmentDistance = distanceToSegment(state.shooterCurrentEyePosition, renderStartWorld, renderEndWorld);
+            width *= state.tracerSize;
+            width *= (float) Math.max(1.0, disToEye / 3.5);
+            poseStack.mulPose(Axis.YP.rotationDegrees(state.yRot - 180.0F));
+            poseStack.mulPose(Axis.XP.rotationDegrees(state.xRot));
+            poseStack.translate(0, state.shooterIsLocalPlayer ? 0 : -0.2, trailLength / 2.0);
+            poseStack.scale(width, width, (float) trailLength);
+
+            boolean legacyGateAllowsRender = state.tickCount >= 5 || bulletDistance > LEGACY_TRACER_HIDE_DISTANCE;
+            // 第一人称只应用旧版固定 muzzle offset；旧 tick gate 通过后仍按最终提交线段隐藏近端曳光。
+            boolean visualNearGateAllowsRender = !state.shooterIsLocalPlayer || nearestSegmentDistance > FIRST_PERSON_TRACER_HIDE_DISTANCE;
+            boolean tracerSubmitted = legacyGateAllowsRender && visualNearGateAllowsRender;
+            String blockedReason = "";
+            if (!legacyGateAllowsRender) {
+                blockedReason = "near_bullet_distance";
+            } else if (!visualNearGateAllowsRender) {
+                blockedReason = "near_first_person_segment";
+            }
+            BulletTracerDebug.tracerRender(state, state.firstPersonTracerAnchor, appliedOffset, offsetReducer, disToEye, bulletDistance,
+                    trailLength, legacyGateAllowsRender, visualNearGateAllowsRender, tracerSubmitted, blockedReason, renderStartWorld, renderEndWorld,
+                    nearestSegmentDistance, camera);
+            if (tracerSubmitted) {
+                BedrockSubmitUtils.submitModel(
+                        submitNodeCollector,
+                        poseStack,
+                        RenderTypes.energySwirl(InternalAssetLoader.DEFAULT_BULLET_TEXTURE, 15, 15),
+                        model,
+                        ItemDisplayContext.NONE,
+                        state.lightCoords,
+                        OverlayTexture.NO_OVERLAY,
+                        tracerColor[0],
+                        tracerColor[1],
+                        tracerColor[2],
+                        1
+                );
             }
             poseStack.popPose();
         });
+    }
+
+    private static double distanceToSegment(Vec3 point, Vec3 start, Vec3 end) {
+        Vec3 segment = end.subtract(start);
+        double lengthSqr = segment.lengthSqr();
+        if (lengthSqr <= 1.0E-8) {
+            return point.distanceTo(start);
+        }
+        double t = point.subtract(start).dot(segment) / lengthSqr;
+        t = Mth.clamp(t, 0.0D, 1.0D);
+        return point.distanceTo(start.add(segment.scale(t)));
     }
 
     @Override
@@ -139,15 +231,30 @@ public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet> {
 
     @Override
     public boolean shouldRender(EntityKineticBullet bullet, Frustum camera, double pCamX, double pCamY, double pCamZ) {
-        AABB aabb = bullet.getBoundingBoxForCulling().inflate(0.5);
+        AABB aabb = bullet.getBoundingBox().inflate(0.5);
         if (aabb.hasNaN() || aabb.getSize() == 0) {
             aabb = new AABB(bullet.getX() - 2.0, bullet.getY() - 2.0, bullet.getZ() - 2.0, bullet.getX() + 2.0, bullet.getY() + 2.0, bullet.getZ() + 2.0);
         }
         return camera.isVisible(aabb);
     }
 
-    @Override
-    public ResourceLocation getTextureLocation(@NotNull EntityKineticBullet entity) {
-        return null;
+    public static class BulletRenderState extends EntityRenderState {
+        @Nullable Identifier gunId;
+        @Nullable Identifier gunDisplayId;
+        @Nullable Identifier ammoId;
+        float @Nullable [] tracerColorOverride;
+        boolean tracerAmmo;
+        float tracerSize = 1.0F;
+        float xRot;
+        float yRot;
+        Vec3 deltaMovement = Vec3.ZERO;
+        Vec3 bulletPosition = Vec3.ZERO;
+        int tickCount;
+        int bulletId;
+        boolean hasShooter;
+        boolean shooterIsLocalPlayer;
+        Vec3 shooterEyePosition = Vec3.ZERO;
+        Vec3 shooterCurrentEyePosition = Vec3.ZERO;
+        @Nullable FirstPersonTracerAnchor firstPersonTracerAnchor;
     }
 }

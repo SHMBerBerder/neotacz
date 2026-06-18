@@ -6,30 +6,32 @@ import com.tacz.guns.GunMod;
 import com.tacz.guns.api.resource.ResourceManager;
 import com.tacz.guns.config.PreLoadConfig;
 import com.tacz.guns.util.GetJarResources;
-import cpw.mods.jarhandling.SecureJar;
 import net.minecraft.SharedConstants;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.AbstractPackResources;
+import net.minecraft.server.packs.FilePackResources;
+import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
+import net.minecraft.server.packs.PackSelectionConfig;
 import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.PathPackResources;
+import net.minecraft.server.packs.metadata.MetadataSectionType;
 import net.minecraft.server.packs.metadata.pack.PackMetadataSection;
 import net.minecraft.server.packs.repository.Pack;
 import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.repository.RepositorySource;
 import net.minecraft.server.packs.resources.IoSupplier;
-import net.minecraftforge.fml.ModContainer;
-import net.minecraftforge.fml.ModList;
-import net.minecraftforge.fml.loading.FMLPaths;
-import net.minecraftforge.forgespi.language.IModInfo;
-import net.minecraftforge.forgespi.locating.IModFile;
-import net.minecraftforge.resource.DelegatingPackResources;
-import net.minecraftforge.resource.PathPackResources;
+import net.neoforged.fml.jarcontents.JarResource;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
+import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.neoforgespi.language.IModInfo;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
 import org.apache.maven.artifact.versioning.VersionRange;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
@@ -41,9 +43,11 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -91,59 +95,33 @@ public enum GunPackLoader implements RepositorySource {
         GunMod.LOGGER.info(MARKER, "Start scanning for gun packs in {}", resourcePacksPath);
         List<GunPack> gunPacks = scanExtensions(resourcePacksPath);
         GunMod.LOGGER.info(MARKER, "Found {} possible gunpack(s) and added them to resource set.", gunPacks.size());
-        List<PathPackResources> extensionPacks = new ArrayList<>();
 
-        for(GunPack gunPack : gunPacks) {
-            PathPackResources packResources = new PathPackResources(gunPack.name, false, gunPack.path) {
-                private final SecureJar secureJar = SecureJar.from(gunPack.path);
-
-                @NotNull
-                protected Path resolve(String... paths) {
-                    if (paths.length < 1) {
-                        throw new IllegalArgumentException("Missing path");
-                    } else {
-                        return this.secureJar.getPath(String.join("/", paths));
-                    }
-                }
-
-                public IoSupplier<InputStream> getResource(PackType type, ResourceLocation location) {
-                    return super.getResource(type, location);
-                }
-
-                public void listResources(PackType type, String namespace, String path, PackResources.ResourceOutput resourceOutput) {
-                    super.listResources(type, namespace, path, resourceOutput);
-                }
-            };
-            extensionPacks.add(packResources);
-        }
-
-
-        return Pack.readMetaAndCreate("tacz_resources", Component.literal("TACZ Resources"), true, (id) -> {
-            return new DelegatingPackResources(id, false, new PackMetadataSection(Component.translatable("tacz.resources.modresources"),
-                    SharedConstants.getCurrentVersion().getPackVersion(packType)), extensionPacks) {
-                public IoSupplier<InputStream> getRootResource(String... paths) {
-                    if (paths.length == 1 && paths[0].equals("pack.png")) {
-                        Path logoPath = getModIcon("tacz");
-                        if (logoPath != null) {
-                            return IoSupplier.create(logoPath);
-                        }
-                    }
-                    return null;
-                }
-            };
-        }, packType, Pack.Position.BOTTOM, PackSource.BUILT_IN);
+        PackLocationInfo locationInfo = new PackLocationInfo(
+                "tacz_resources",
+                Component.literal("TACZ Resources"),
+                PackSource.BUILT_IN,
+                Optional.empty()
+        );
+        PackMetadataSection metadata = new PackMetadataSection(
+                Component.translatable("tacz.resources.modresources"),
+                SharedConstants.getCurrentVersion().packVersion(packType).minorRange()
+        );
+        return Pack.readMetaAndCreate(
+                locationInfo,
+                new TaczResourcesSupplier(gunPacks, metadata),
+                packType,
+                new PackSelectionConfig(true, Pack.Position.BOTTOM, false)
+        );
     }
 
-    public static @Nullable Path getModIcon(String modId) {
+    public static @Nullable IoSupplier<InputStream> getModIcon(String modId) {
         Optional<? extends ModContainer> m = ModList.get().getModContainerById(modId);
         if (m.isPresent()) {
             IModInfo mod = m.get().getModInfo();
-            IModFile file = mod.getOwningFile().getFile();
-            if (file != null) {
-                Path logoPath = file.findResource("icon.png");
-                if (Files.exists(logoPath)) {
-                    return logoPath;
-                }
+            String logoFile = mod.getLogoFile().orElse("logo.png");
+            JarResource logoResource = mod.getOwningFile().getFile().getContents().get(logoFile);
+            if (logoResource != null) {
+                return logoResource.retain()::open;
             }
         }
 
@@ -270,5 +248,99 @@ public enum GunPackLoader implements RepositorySource {
 
 
     public record GunPack(Path path, String name) {
+    }
+
+    private record TaczResourcesSupplier(List<GunPack> gunPacks, PackMetadataSection metadata) implements Pack.ResourcesSupplier {
+        @Override
+        public PackResources openPrimary(PackLocationInfo locationInfo) {
+            return new TaczPackResources(locationInfo, gunPacks, metadata);
+        }
+
+        @Override
+        public PackResources openFull(PackLocationInfo locationInfo, Pack.Metadata metadata) {
+            return openPrimary(locationInfo);
+        }
+    }
+
+    private static final class TaczPackResources extends AbstractPackResources {
+        private final List<PackResources> packs;
+        private final PackMetadataSection metadata;
+        private final @Nullable IoSupplier<InputStream> icon;
+
+        private TaczPackResources(PackLocationInfo locationInfo, List<GunPack> gunPacks, PackMetadataSection metadata) {
+            super(locationInfo);
+            this.metadata = metadata;
+            this.icon = getModIcon(GunMod.MOD_ID);
+            this.packs = gunPacks.stream()
+                    .map(gunPack -> openPackResources(locationInfo, gunPack))
+                    .toList();
+        }
+
+        private static PackResources openPackResources(PackLocationInfo locationInfo, GunPack gunPack) {
+            Path path = gunPack.path();
+            if (Files.isDirectory(path)) {
+                return new PathPackResources(locationInfo, path);
+            }
+            return new FilePackResources(locationInfo, new FilePackResources.SharedZipFileAccess(path.toFile()), "");
+        }
+
+        @Override
+        public @Nullable IoSupplier<InputStream> getRootResource(String... paths) {
+            if (paths.length == 1 && paths[0].equals("pack.png") && icon != null) {
+                return icon;
+            }
+            for (PackResources pack : packs) {
+                IoSupplier<InputStream> resource = pack.getRootResource(paths);
+                if (resource != null) {
+                    return resource;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public @Nullable IoSupplier<InputStream> getResource(PackType type, Identifier location) {
+            for (PackResources pack : packs) {
+                IoSupplier<InputStream> resource = pack.getResource(type, location);
+                if (resource != null) {
+                    return resource;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public void listResources(PackType type, String namespace, String path, PackResources.ResourceOutput output) {
+            HashMap<Identifier, IoSupplier<InputStream>> resources = new HashMap<>();
+            for (PackResources pack : packs) {
+                pack.listResources(type, namespace, path, resources::putIfAbsent);
+            }
+            resources.forEach(output);
+        }
+
+        @Override
+        public Set<String> getNamespaces(PackType type) {
+            Set<String> namespaces = new HashSet<>();
+            for (PackResources pack : packs) {
+                namespaces.addAll(pack.getNamespaces(type));
+            }
+            return namespaces;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <T> @Nullable T getMetadataSection(MetadataSectionType<T> metadataType) {
+            if (PackMetadataSection.CLIENT_TYPE.equals(metadataType)
+                    || PackMetadataSection.SERVER_TYPE.equals(metadataType)
+                    || PackMetadataSection.FALLBACK_TYPE.equals(metadataType)) {
+                return (T) metadata;
+            }
+            return null;
+        }
+
+        @Override
+        public void close() {
+            packs.forEach(PackResources::close);
+        }
     }
 }

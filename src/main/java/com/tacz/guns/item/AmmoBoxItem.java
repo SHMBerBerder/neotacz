@@ -10,12 +10,12 @@ import com.tacz.guns.api.item.nbt.AmmoBoxItemDataAccessor;
 import com.tacz.guns.config.sync.SyncConfig;
 import com.tacz.guns.init.ModItems;
 import com.tacz.guns.inventory.tooltip.AmmoBoxTooltip;
+import com.tacz.guns.util.ItemStackData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -26,16 +26,16 @@ import net.minecraft.world.inventory.ClickAction;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.item.*;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.level.Level;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
-public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItemDataAccessor {
-    public static final ResourceLocation PROPERTY_NAME = new ResourceLocation(GunMod.MOD_ID, "ammo_statue");
+public class AmmoBoxItem extends Item implements AmmoBoxItemDataAccessor {
+    public static final Identifier PROPERTY_NAME = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "ammo_statue");
 
     public static final int IRON_LEVEL = 0;
     public static final int GOLD_LEVEL = 1;
@@ -50,16 +50,14 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
     private static final int CREATIVE_INDEX = 6;
     private static final int ALL_TYPE_CREATIVE_INDEX = 8;
 
-    public AmmoBoxItem() {
-        super(new Properties().stacksTo(1));
+    public AmmoBoxItem(Properties properties) {
+        super(properties.stacksTo(1));
     }
 
-    @OnlyIn(Dist.CLIENT)
     public static int getColor(ItemStack stack, int tintIndex) {
         return tintIndex > 0 ? -1 : getTagColor(stack);
     }
 
-    @OnlyIn(Dist.CLIENT)
     public static float getStatue(ItemStack stack, @Nullable ClientLevel level, @Nullable LivingEntity entity, int seed) {
         int openStatue = OPEN;
         int ammoLevel = IRON_LEVEL;
@@ -69,11 +67,11 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
             }
             openStatue = getOpenStatue(stack, iAmmoBox);
             if (iAmmoBox.isCreative(stack)) {
-                return openStatue + CREATIVE_INDEX;
+                return Mth.clamp(openStatue + CREATIVE_INDEX, 0, ALL_TYPE_CREATIVE_INDEX);
             }
             ammoLevel = getLevelStatue(stack, iAmmoBox);
         }
-        return openStatue + 2 * ammoLevel;
+        return Mth.clamp(openStatue + 2 * ammoLevel, 0, ALL_TYPE_CREATIVE_INDEX);
     }
 
     private static int getOpenStatue(ItemStack stack, IAmmoBox iAmmoBox) {
@@ -86,12 +84,12 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
     }
 
     private static int getLevelStatue(ItemStack stack, IAmmoBox iAmmoBox) {
-        return iAmmoBox.getAmmoLevel(stack);
+        return Mth.clamp(iAmmoBox.getAmmoLevel(stack), IRON_LEVEL, DIAMOND_LEVEL);
     }
 
     private static int getTagColor(ItemStack stack) {
-        CompoundTag compoundtag = stack.getTagElement(DISPLAY_TAG);
-        return compoundtag != null && compoundtag.contains(COLOR_TAG, Tag.TAG_ANY_NUMERIC) ? compoundtag.getInt(COLOR_TAG) : 0x727d6b;
+        CompoundTag compoundtag = ItemStackData.getCompound(stack, DISPLAY_TAG);
+        return compoundtag != null ? compoundtag.getInt(COLOR_TAG).orElse(0x727d6b) : 0x727d6b;
     }
 
     @Override
@@ -105,7 +103,7 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
         if (action == ClickAction.SECONDARY) {
             // 点击的格子
             ItemStack slotItem = slot.getItem();
-            ResourceLocation boxAmmoId = this.getAmmoId(ammoBox);
+            Identifier boxAmmoId = this.getAmmoId(ammoBox);
 
             // 格子为空，那就是取出物品
             if (slotItem.isEmpty()) {
@@ -147,7 +145,7 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
                 if (isAllTypeCreative(ammoBox)) {
                     return false;
                 }
-                ResourceLocation slotAmmoId = iAmmo.getAmmoId(slotItem);
+                Identifier slotAmmoId = iAmmo.getAmmoId(slotItem);
                 // 格子里的子弹 ID 不对，不能放
                 if (slotAmmoId.equals(DefaultAssets.EMPTY_AMMO_ID)) {
                     return false;
@@ -197,7 +195,7 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
 
     @Override
     public int getBarWidth(ItemStack stack) {
-        ResourceLocation ammoId = this.getAmmoId(stack);
+        Identifier ammoId = this.getAmmoId(stack);
         int ammoCount = this.getAmmoCount(stack);
         int boxLevelMultiplier = this.getAmmoLevel(stack) + 1;
         double widthPercent = TimelessAPI.getCommonAmmoIndex(ammoId).map(index -> {
@@ -261,7 +259,7 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
         if (!(stack.getItem() instanceof IAmmoBox iAmmoBox)) {
             return Optional.empty();
         }
-        ResourceLocation ammoId = iAmmoBox.getAmmoId(stack);
+        Identifier ammoId = iAmmoBox.getAmmoId(stack);
         if (ammoId.equals(DefaultAssets.EMPTY_AMMO_ID)) {
             return Optional.empty();
         }
@@ -274,17 +272,17 @@ public class AmmoBoxItem extends Item implements DyeableLeatherItem, AmmoBoxItem
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, @Nullable Level pLevel, List<Component> components, TooltipFlag isAdvanced) {
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context, TooltipDisplay display, Consumer<Component> builder, TooltipFlag isAdvanced) {
         if (isAllTypeCreative(stack)) {
-            components.add(Component.translatable("tooltip.tacz.ammo_box.usage.all_type_creative").withStyle(ChatFormatting.GOLD));
+            builder.accept(Component.translatable("tooltip.tacz.ammo_box.usage.all_type_creative").withStyle(ChatFormatting.GOLD));
             return;
         }
         if (isCreative(stack)) {
-            components.add(Component.translatable("tooltip.tacz.ammo_box.usage.creative.1").withStyle(ChatFormatting.YELLOW));
-            components.add(Component.translatable("tooltip.tacz.ammo_box.usage.creative.2").withStyle(ChatFormatting.YELLOW));
+            builder.accept(Component.translatable("tooltip.tacz.ammo_box.usage.creative.1").withStyle(ChatFormatting.YELLOW));
+            builder.accept(Component.translatable("tooltip.tacz.ammo_box.usage.creative.2").withStyle(ChatFormatting.YELLOW));
             return;
         }
-        components.add(Component.translatable("tooltip.tacz.ammo_box.usage.deposit").withStyle(ChatFormatting.GRAY));
-        components.add(Component.translatable("tooltip.tacz.ammo_box.usage.remove").withStyle(ChatFormatting.GRAY));
+        builder.accept(Component.translatable("tooltip.tacz.ammo_box.usage.deposit").withStyle(ChatFormatting.GRAY));
+        builder.accept(Component.translatable("tooltip.tacz.ammo_box.usage.remove").withStyle(ChatFormatting.GRAY));
     }
 }

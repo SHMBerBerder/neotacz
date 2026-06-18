@@ -11,11 +11,8 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Vector3f;
 
-@OnlyIn(Dist.CLIENT)
 public class AmmoParticleSpawner {
     public static void addParticle(EntityKineticBullet bullet) {
         TimelessAPI.getGunDisplay(bullet.getGunDisplayId(), bullet.getGunId()).ifPresent(gunIndex -> {
@@ -45,7 +42,11 @@ public class AmmoParticleSpawner {
         Vector3f delta = particle.getDelta();
         float particleSpeed = particle.getSpeed();
         ParticleEngine particleEngine = Minecraft.getInstance().particleEngine;
+        Entity owner = bullet.getOwner();
         if (count == 0) {
+            if (isTooCloseToOwner(owner, bullet.getX(), bullet.getY(), bullet.getZ())) {
+                return;
+            }
             double xSpeed = particleSpeed * delta.x();
             double ySpeed = particleSpeed * delta.y();
             double zSpeed = particleSpeed * delta.z();
@@ -55,7 +56,6 @@ public class AmmoParticleSpawner {
             }
         } else {
             RandomSource random = bullet.getRandom();
-            Entity owner = bullet.getOwner();
             for (int i = 0; i < count; ++i) {
                 createParticle(bullet, particle, random, delta, particleSpeed, owner, particleEngine, particleOptions);
             }
@@ -77,11 +77,15 @@ public class AmmoParticleSpawner {
         double posZ = bullet.getZ() + offsetZ;
 
         // 如果太贴近发射者，不进行粒子生成
-        if (owner == null || owner.distanceToSqr(posX, posY, posZ) > 3 * 3) {
+        if (!isTooCloseToOwner(owner, posX, posY, posZ)) {
             Particle result = particleEngine.createParticle(particleOptions, posX, posY, posZ, xSpeed, ySpeed, zSpeed);
             if (result != null) {
                 result.setLifetime(particle.getLifeTime());
             }
         }
+    }
+
+    private static boolean isTooCloseToOwner(Entity owner, double x, double y, double z) {
+        return owner != null && owner.distanceToSqr(x, y, z) <= 3 * 3;
     }
 }

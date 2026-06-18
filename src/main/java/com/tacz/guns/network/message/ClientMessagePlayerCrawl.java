@@ -4,7 +4,7 @@ import com.tacz.guns.api.entity.IGunOperator;
 import com.tacz.guns.config.sync.SyncConfig;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.network.NetworkEvent;
+import com.tacz.guns.network.NetworkContext;
 
 import java.util.function.Supplier;
 
@@ -23,8 +23,8 @@ public class ClientMessagePlayerCrawl {
         return new ClientMessagePlayerCrawl(buf.readBoolean());
     }
 
-    public static void handle(ClientMessagePlayerCrawl message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
+    public static void handle(ClientMessagePlayerCrawl message, Supplier<NetworkContext> contextSupplier) {
+        NetworkContext context = contextSupplier.get();
         if (context.getDirection().getReceptionSide().isServer()) {
             context.enqueueWork(() -> {
                 ServerPlayer entity = context.getSender();

@@ -4,7 +4,7 @@ import com.tacz.guns.api.entity.IGunOperator;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraftforge.network.NetworkEvent;
+import com.tacz.guns.network.NetworkContext;
 
 import java.util.function.Supplier;
 
@@ -19,8 +19,8 @@ public class ClientMessagePlayerDrawGun {
         return new ClientMessagePlayerDrawGun();
     }
 
-    public static void handle(ClientMessagePlayerDrawGun message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
+    public static void handle(ClientMessagePlayerDrawGun message, Supplier<NetworkContext> contextSupplier) {
+        NetworkContext context = contextSupplier.get();
         if (context.getDirection().getReceptionSide().isServer()) {
             context.enqueueWork(() -> {
                 ServerPlayer entity = context.getSender();
@@ -28,7 +28,7 @@ public class ClientMessagePlayerDrawGun {
                     return;
                 }
                 Inventory inventory = entity.getInventory();
-                int selected = inventory.selected;
+                int selected = inventory.getSelectedSlot();
                 IGunOperator.fromLivingEntity(entity).draw(() -> inventory.getItem(selected));
             });
         }

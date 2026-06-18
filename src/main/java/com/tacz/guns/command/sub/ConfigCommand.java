@@ -8,7 +8,7 @@ import com.tacz.guns.config.sync.SyncConfig;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.minecraftforge.server.command.EnumArgument;
+import net.neoforged.neoforge.server.command.EnumArgument;
 
 public class ConfigCommand {
     private static final String CONFIG_NAME = "config";

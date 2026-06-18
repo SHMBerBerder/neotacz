@@ -5,12 +5,13 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.client.model.bedrock.BedrockCubePerFace;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import com.tacz.guns.client.resource.pojo.model.FaceUVsItem;
-import net.minecraft.client.model.EntityModel;
-import net.minecraft.world.entity.Entity;
+import com.tacz.guns.util.RenderHelper;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.world.item.ItemDisplayContext;
 
 
-public class SlotModel extends EntityModel<Entity> {
+public final class SlotModel {
     private final BedrockPart bone;
 
     public SlotModel(boolean illuminated) {
@@ -24,12 +25,16 @@ public class SlotModel extends EntityModel<Entity> {
         this(false);
     }
 
-    @Override
-    public void setupAnim(Entity entity, float limbSwing, float limbSwingAmount, float ageInTicks, float netHeadYaw, float headPitch) {
-    }
-
-    @Override
     public void renderToBuffer(PoseStack poseStack, VertexConsumer buffer, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
         bone.render(poseStack, ItemDisplayContext.GUI, buffer, packedLight, packedOverlay);
+    }
+
+    public void submit(PoseStack poseStack, SubmitNodeCollector collector, RenderType renderType, int packedLight, int packedOverlay) {
+        RenderHelper.submitCustomGeometry(collector, poseStack, renderType, (pose, buffer) -> {
+            PoseStack callbackPoseStack = new PoseStack();
+            callbackPoseStack.last().pose().set(pose.pose());
+            callbackPoseStack.last().normal().set(pose.normal());
+            this.renderToBuffer(callbackPoseStack, buffer, packedLight, packedOverlay, 1.0F, 1.0F, 1.0F, 1.0F);
+        });
     }
 }

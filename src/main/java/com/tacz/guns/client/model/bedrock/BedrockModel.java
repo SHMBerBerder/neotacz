@@ -3,11 +3,11 @@ package com.tacz.guns.client.model.bedrock;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.client.model.IFunctionalRenderer;
+import com.tacz.guns.client.renderer.BedrockSubmitUtils;
 import com.tacz.guns.client.resource.pojo.model.*;
-import com.tacz.guns.compat.oculus.OculusCompat;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import com.tacz.guns.util.RenderHelper;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
@@ -353,22 +353,34 @@ public class BedrockModel {
     }
 
     public void render(PoseStack matrixStack, ItemDisplayContext transformType, RenderType renderType, int light, int overlay, float red, float green, float blue, float alpha) {
-        MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
-        VertexConsumer builder = bufferSource.getBuffer(renderType);
+        SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
+        if (collector == null) {
+            delegateRenderers = new ArrayList<>();
+            return;
+        }
+        BedrockSubmitUtils.submitModel(collector, matrixStack, renderType, this, transformType, light, overlay, red, green, blue, alpha);
+    }
 
+    public void renderToBuffer(PoseStack matrixStack, ItemDisplayContext transformType, VertexConsumer builder, int light, int overlay) {
+        renderToBuffer(matrixStack, transformType, builder, light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    public void renderToBuffer(PoseStack matrixStack, ItemDisplayContext transformType, VertexConsumer builder, int light, int overlay,
+                               float red, float green, float blue, float alpha) {
         matrixStack.pushPose();
         for (BedrockPart model : shouldRender) {
             model.render(matrixStack, transformType, builder, light, overlay, red, green, blue, alpha);
         }
         matrixStack.popPose();
-        if (!OculusCompat.endBatch(bufferSource)) {
-            bufferSource.endBatch(renderType);
-        }
 
         for (IFunctionalRenderer renderer : delegateRenderers) {
             renderer.render(matrixStack, builder, transformType, light, overlay);
         }
         delegateRenderers = new ArrayList<>();
+    }
+
+    public void collectDeferredFunctionalRenderers(PoseStack matrixStack, ItemDisplayContext transformType, int light, int overlay) {
+        renderToBuffer(matrixStack, transformType, RenderHelper.noopVertexConsumer(), light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     protected List<BedrockPart> getPath(@Nullable ModelRendererWrapper rendererWrapper) {

@@ -14,11 +14,12 @@ import com.tacz.guns.client.resource.GunDisplayInstance;
 import com.tacz.guns.client.resource.pojo.display.gun.MuzzleFlash;
 import com.tacz.guns.compat.oculus.OculusCompat;
 import com.tacz.guns.resource.modifier.custom.SilenceModifier;
+import com.tacz.guns.util.RenderHelper;
 import it.unimi.dsi.fastutil.Pair;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import org.joml.Matrix3f;
@@ -41,6 +42,11 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
 
     public MuzzleFlashRender(BedrockGunModel bedrockGunModel) {
         this.bedrockGunModel = bedrockGunModel;
+    }
+
+    @Override
+    public boolean usesRetainedSubmitPrepass() {
+        return true;
     }
 
     public static void onShoot() {
@@ -70,7 +76,10 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
             float scaleTime = TIME_RANGE / 2.0f;
             scale = time < scaleTime ? (scale * (time / scaleTime)) : scale;
             muzzleFlashStartMark = false;
-            MultiBufferSource multiBufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
+            SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
+            if (collector == null) {
+                return;
+            }
 
             // 推送到指定位置
             PoseStack poseStack2 = new PoseStack();
@@ -83,8 +92,8 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
                 poseStack2.scale(scale, scale, scale);
                 poseStack2.mulPose(Axis.ZP.rotationDegrees(muzzleFlashRandomRotate));
                 poseStack2.translate(0, -1, 0);
-                RenderType renderTypeBg = RenderType.entityTranslucent(muzzleFlash.getTexture());
-                MUZZLE_FLASH_MODEL.renderToBuffer(poseStack2, multiBufferSource.getBuffer(renderTypeBg), light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
+                RenderType renderTypeBg = RenderTypes.entityTranslucent(muzzleFlash.getTexture());
+                MUZZLE_FLASH_MODEL.submit(poseStack2, collector, renderTypeBg, light, overlay);
             }
             poseStack2.popPose();
 
@@ -94,8 +103,8 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
                 poseStack2.scale(scale / 2, scale / 2, scale / 2);
                 poseStack2.mulPose(Axis.ZP.rotationDegrees(muzzleFlashRandomRotate));
                 poseStack2.translate(0, -0.9, 0);
-                RenderType renderTypeLight = RenderType.energySwirl(muzzleFlash.getTexture(), 1, 1);
-                MUZZLE_FLASH_MODEL.renderToBuffer(poseStack2, multiBufferSource.getBuffer(renderTypeLight), light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
+                RenderType renderTypeLight = RenderTypes.energySwirl(muzzleFlash.getTexture(), 1, 1);
+                MUZZLE_FLASH_MODEL.submit(poseStack2, collector, renderTypeLight, light, overlay);
             }
             poseStack2.popPose();
         }
@@ -120,7 +129,7 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
             ItemStack muzzleAttachment = bedrockGunModel.getCurrentAttachmentItem().get(AttachmentType.MUZZLE);
             IAttachment iAttachment = IAttachment.getIAttachmentOrNull(muzzleAttachment);
             if (iAttachment != null) {
-                ResourceLocation attachmentId = iAttachment.getAttachmentId(muzzleAttachment);
+                Identifier attachmentId = iAttachment.getAttachmentId(muzzleAttachment);
                 TimelessAPI.getCommonAttachmentIndex(attachmentId).ifPresent(index -> {
                     var modifier = index.getData().getModifier();
                     if (modifier.containsKey(SilenceModifier.ID) && modifier.get(SilenceModifier.ID).getValue() instanceof Pair<?, ?> pair) {

@@ -1,19 +1,21 @@
 package com.tacz.guns.client.gui.components.smith;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.tacz.guns.GunMod;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.ActiveTextCollector;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.input.InputWithModifiers;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
 
 public class ResultButton extends Button {
-    private static final ResourceLocation TEXTURE = new ResourceLocation(GunMod.MOD_ID, "textures/gui/gun_smith_table.png");
+    private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "textures/gui/gun_smith_table.png");
     private final ItemStack stack;
     private boolean isSelected = false;
 
@@ -23,31 +25,32 @@ public class ResultButton extends Button {
     }
 
     @Override
-    protected void renderWidget(@NotNull GuiGraphics gui, int pMouseX, int pMouseY, float pPartialTick) {
-        RenderSystem.enableDepthTest();
-
+    protected void extractContents(@NotNull GuiGraphicsExtractor gui, int pMouseX, int pMouseY, float pPartialTick) {
         if (isSelected) {
             if (isHoveredOrFocused()) {
-                gui.blit(TEXTURE, this.getX() - 1, this.getY() - 1, 52, 229, this.width + 2, this.height + 2, 256, 256);
+                gui.blit(RenderPipelines.GUI_TEXTURED, TEXTURE, this.getX() - 1, this.getY() - 1, 52, 229, this.width + 2, this.height + 2, 256, 256);
             } else {
-                gui.blit(TEXTURE, this.getX(), this.getY(), 53, 230, this.width, this.height, 256, 256);
+                gui.blit(RenderPipelines.GUI_TEXTURED, TEXTURE, this.getX(), this.getY(), 53, 230, this.width, this.height, 256, 256);
             }
         } else {
             if (isHoveredOrFocused()) {
-                gui.blit(TEXTURE, this.getX() - 1, this.getY() - 1, 52, 211, this.width + 2, this.height + 2, 256, 256);
+                gui.blit(RenderPipelines.GUI_TEXTURED, TEXTURE, this.getX() - 1, this.getY() - 1, 52, 211, this.width + 2, this.height + 2, 256, 256);
             } else {
-                gui.blit(TEXTURE, this.getX(), this.getY(), 53, 212, this.width, this.height, 256, 256);
+                gui.blit(RenderPipelines.GUI_TEXTURED, TEXTURE, this.getX(), this.getY(), 53, 212, this.width, this.height, 256, 256);
             }
         }
         Minecraft mc = Minecraft.getInstance();
-        gui.renderItem(stack, this.getX() + 1, this.getY());
+        gui.item(stack, this.getX() + 1, this.getY());
 
         Component hoverName = this.stack.getHoverName();
-        renderScrollingString(gui, mc.font, hoverName, this.getX() + 20, this.getY() + 4, this.getX() + 92, this.getY() + 13, 0xFFFFFF);
+        ActiveTextCollector text = gui.textRendererForWidget(this, GuiGraphicsExtractor.HoveredTextEffects.NONE);
+        int left = this.getX() + 20;
+        int right = this.getX() + 92;
+        text.acceptScrolling(hoverName, (left + right) / 2, left, right, this.getY() + 4, this.getY() + 13);
     }
 
     @Override
-    public void onPress() {
+    public void onPress(InputWithModifiers input) {
         this.isSelected = true;
         this.onPress.onPress(this);
     }

@@ -12,8 +12,8 @@ import com.tacz.guns.network.message.ClientMessagePlayerFireSelect;
 import com.tacz.guns.resource.modifier.AttachmentPropertyManager;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.fml.LogicalSide;
 
 public class LocalPlayerFireSelect {
     private final LocalPlayerDataHolder data;
@@ -34,7 +34,7 @@ public class LocalPlayerFireSelect {
         if (!(mainHandItem.getItem() instanceof IGun iGun)) {
             return;
         }
-        if (MinecraftForge.EVENT_BUS.post(new GunFireSelectEvent(player, player.getMainHandItem(), LogicalSide.CLIENT))) {
+        if (NeoForge.EVENT_BUS.post(new GunFireSelectEvent(player, player.getMainHandItem(), LogicalSide.CLIENT)).isCanceled()) {
             return;
         }
 

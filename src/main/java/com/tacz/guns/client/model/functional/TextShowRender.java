@@ -7,10 +7,13 @@ import com.tacz.guns.client.model.IFunctionalRenderer;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
 import com.tacz.guns.client.model.papi.PapiManager;
 import com.tacz.guns.client.resource.pojo.display.gun.TextShow;
+import com.tacz.guns.util.RenderHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import org.apache.commons.lang3.StringUtils;
@@ -26,6 +29,11 @@ public class TextShowRender implements IFunctionalRenderer {
         this.bedrockModel = bedrockModel;
         this.textShow = textShow;
         this.gunStack = gunStack;
+    }
+
+    @Override
+    public boolean usesRetainedSubmitPrepass() {
+        return true;
     }
 
     @Override
@@ -47,7 +55,7 @@ public class TextShowRender implements IFunctionalRenderer {
             boolean shadow = textShow.isShadow();
             int color = textShow.getColorInt();
             float scale = textShow.getScale();
-            int packLight = LightTexture.pack(textShow.getTextLight(), textShow.getTextLight());
+            int packLight = LightCoordsUtil.pack(textShow.getTextLight(), textShow.getTextLight());
             int width = font.width(text);
             int xOffset;
             switch (textShow.getAlign()) {
@@ -61,9 +69,12 @@ public class TextShowRender implements IFunctionalRenderer {
             poseStack2.last().pose().mul(pose);
             poseStack2.scale(2 / 300f * scale, -2 / 300f * scale, -2 / 300f);
 
-            MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
-            font.drawInBatch(text, -xOffset, -font.lineHeight / 2f, color, shadow, poseStack2.last().pose(), bufferSource, Font.DisplayMode.NORMAL, 0, packLight);
-            bufferSource.endBatch();
+            SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
+            if (collector != null) {
+                collector.submitText(poseStack2, -xOffset, -font.lineHeight / 2f,
+                        FormattedCharSequence.forward(text, Style.EMPTY), shadow, Font.DisplayMode.NORMAL,
+                        packLight, color, 0, 0);
+            }
         });
     }
 }

@@ -5,7 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.tacz.guns.resource.network.DataType;
 import net.minecraft.resources.FileToIdConverter;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.profiling.ProfilerFiller;
 
@@ -18,7 +18,7 @@ import java.util.Map;
  */
 public class CommonDataManager<T> extends JsonDataManager<T> implements INetworkCacheReloadListener {
     private final DataType type;
-    protected Map<ResourceLocation, String> networkCache;
+    protected Map<Identifier, String> networkCache;
 
     public CommonDataManager(DataType type, Class<T> dataClass, Gson pGson, String directory, String marker) {
         super(dataClass, pGson, directory, marker);
@@ -31,10 +31,10 @@ public class CommonDataManager<T> extends JsonDataManager<T> implements INetwork
     }
 
     @Override
-    protected void apply(Map<ResourceLocation, JsonElement> pObject, ResourceManager pResourceManager, ProfilerFiller pProfiler) {
+    protected void apply(Map<Identifier, JsonElement> pObject, ResourceManager pResourceManager, ProfilerFiller pProfiler) {
         super.apply(pObject, pResourceManager, pProfiler);
 
-        ImmutableMap.Builder<ResourceLocation, String> builder = ImmutableMap.builder();
+        ImmutableMap.Builder<Identifier, String> builder = ImmutableMap.builder();
         pObject.forEach((id, element) -> builder.put(id, element.toString()));
         this.networkCache = builder.build();
     }
@@ -43,7 +43,7 @@ public class CommonDataManager<T> extends JsonDataManager<T> implements INetwork
         this.dataMap.clear();
     }
 
-    public Map<ResourceLocation, String> getNetworkCache() {
+    public Map<Identifier, String> getNetworkCache() {
         return this.networkCache;
     }
 

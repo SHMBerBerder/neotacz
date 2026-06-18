@@ -9,8 +9,12 @@ import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.ServerMessageCraft;
 import com.tacz.guns.resource.filter.RecipeFilter;
 import com.tacz.guns.resource.index.CommonBlockIndex;
+import com.tacz.guns.util.GunSmithTableBlockIds;
 import it.unimi.dsi.fastutil.ints.Int2IntArrayMap;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -20,29 +24,30 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
-import net.minecraftforge.common.extensions.IForgeMenuType;
+import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
+import net.neoforged.neoforge.items.wrapper.InvWrapper;
 
 import javax.annotation.Nullable;
 import java.util.List;
 
 public class GunSmithTableMenu extends AbstractContainerMenu {
-    public static final MenuType<GunSmithTableMenu> TYPE = IForgeMenuType.create((windowId, inv, data) -> {
-        ResourceLocation blockId = data.readResourceLocation();
+    public static final MenuType<GunSmithTableMenu> TYPE = IMenuTypeExtension.create((windowId, inv, data) -> {
+        Identifier blockId = data.readIdentifier();
         return new GunSmithTableMenu(windowId, inv, blockId);
     });
 
-    private final ResourceLocation blockId;
+    @Nullable
+    private final Identifier blockId;
     private final RecipeFilter filter;
 
-    public GunSmithTableMenu(int id, Inventory inventory, @Nullable ResourceLocation resourceLocation) {
+    public GunSmithTableMenu(int id, Inventory inventory, @Nullable Identifier resourceLocation) {
         super(TYPE, id);
-        this.blockId = resourceLocation;
+        this.blockId = GunSmithTableBlockIds.normalize(resourceLocation);
         this.filter = TimelessAPI.getCommonBlockIndex(getBlockId()).map(CommonBlockIndex::getFilter).orElse(null);
     }
 
     @Nullable
-    public ResourceLocation getBlockId() {
+    public Identifier getBlockId() {
         return blockId;
     }
 
@@ -57,14 +62,14 @@ public class GunSmithTableMenu extends AbstractContainerMenu {
     }
 
     @Nullable
-    private GunSmithTableRecipe getRecipe(ResourceLocation recipeId, RecipeManager recipeManager) {
+    private GunSmithTableRecipe getRecipe(Identifier recipeId, RecipeManager recipeManager) {
         if (!DefaultAssets.DEFAULT_BLOCK_ID.equals(getBlockId()) || SyncConfig.ENABLE_TABLE_FILTER.get()) {
             if (filter != null && !filter.contains(recipeId)) {
                 return null;
             }
         }
 
-        Recipe<?> recipe = recipeManager.byKey(recipeId).orElse(null);
+        Recipe<?> recipe = recipeManager.byKey(ResourceKey.create(Registries.RECIPE, recipeId)).map(holder -> holder.value()).orElse(null);
         if (recipe instanceof GunSmithTableRecipe gunSmithTableRecipe) {
             boolean flag = TimelessAPI.getCommonBlockIndex(getBlockId()).map(blockIndex -> {
                 return blockIndex.getData().getTabs().stream().noneMatch(tab -> tab.id().equals(gunSmithTableRecipe.getTab()));
@@ -80,58 +85,60 @@ public class GunSmithTableMenu extends AbstractContainerMenu {
         return null;
     }
 
-    public void doCraft(ResourceLocation recipeId, Player player) {
-        GunSmithTableRecipe recipe = getRecipe(recipeId, player.level().getRecipeManager());
+    public void doCraft(Identifier recipeId, Player player) {
+        Level level = player.level();
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        GunSmithTableRecipe recipe = getRecipe(recipeId, serverLevel.getServer().getRecipeManager());
         if (recipe == null) {
             return;
         }
-        player.getCapability(ForgeCapabilities.ITEM_HANDLER, null).ifPresent(handler -> {
-            // 是创造模式，就不扣材料
-            if (!player.isCreative()) {
-                Int2IntArrayMap recordCount = new Int2IntArrayMap();
-                List<GunSmithTableIngredient> ingredients = recipe.getInputs();
+        InvWrapper handler = new InvWrapper(player.getInventory());
+        // 是创造模式，就不扣材料
+        if (!player.isCreative()) {
+            Int2IntArrayMap recordCount = new Int2IntArrayMap();
+            List<GunSmithTableIngredient> ingredients = recipe.getInputs();
 
-                for (GunSmithTableIngredient ingredient : ingredients) {
-                    int count = 0;
-                    for (int slotIndex = 0; slotIndex < handler.getSlots(); slotIndex++) {
-                        ItemStack stack = handler.getStackInSlot(slotIndex);
-                        int stackCount = stack.getCount();
-                        if (!stack.isEmpty() && ingredient.getIngredient().test(stack)) {
-                            count = count + stackCount;
-                            // 记录扣除的 slot 和数量
-                            if (count <= ingredient.getCount()) {
-                                // 如果数量不足，全扣
-                                recordCount.put(slotIndex, stackCount);
-                            } else {
-                                //  数量够了，只扣需要的数量
-                                int remaining = count - ingredient.getCount();
-                                recordCount.put(slotIndex, stackCount - remaining);
-                                break;
-                            }
+            for (GunSmithTableIngredient ingredient : ingredients) {
+                int count = 0;
+                for (int slotIndex = 0; slotIndex < handler.getSlots(); slotIndex++) {
+                    ItemStack stack = handler.getStackInSlot(slotIndex);
+                    int stackCount = stack.getCount();
+                    if (!stack.isEmpty() && ingredient.getIngredient().test(stack)) {
+                        count = count + stackCount;
+                        // 记录扣除的 slot 和数量
+                        if (count <= ingredient.getCount()) {
+                            // 如果数量不足，全扣
+                            recordCount.put(slotIndex, stackCount);
+                        } else {
+                            //  数量够了，只扣需要的数量
+                            int remaining = count - ingredient.getCount();
+                            recordCount.put(slotIndex, stackCount - remaining);
+                            break;
                         }
                     }
-                    // 数量不够，不执行后续逻辑，合成失败
-                    if (count < ingredient.getCount()) {
-                        return;
-                    }
                 }
-
-                // 开始扣材料
-                for (int slotIndex : recordCount.keySet()) {
-                    handler.extractItem(slotIndex, recordCount.get(slotIndex), false);
+                // 数量不够，不执行后续逻辑，合成失败
+                if (count < ingredient.getCount()) {
+                    return;
                 }
             }
 
-            // 给玩家对应的物品
-            Level level = player.level();
-            if (!level.isClientSide) {
-                ItemEntity itemEntity = new ItemEntity(level, player.getX(), player.getY() + 0.5, player.getZ(), recipe.getResultItem(player.level().registryAccess()).copy());
-                itemEntity.setPickUpDelay(0);
-                level.addFreshEntity(itemEntity);
+            // 开始扣材料
+            for (int slotIndex : recordCount.keySet()) {
+                handler.extractItem(slotIndex, recordCount.get(slotIndex), false);
             }
-            // 更新，否则客户端显示不正确
-            player.inventoryMenu.broadcastFullState();
-            NetworkHandler.sendToClientPlayer(new ServerMessageCraft(this.containerId), player);
-        });
+        }
+
+        // 给玩家对应的物品
+        if (!level.isClientSide()) {
+            ItemEntity itemEntity = new ItemEntity(level, player.getX(), player.getY() + 0.5, player.getZ(), recipe.getResultItem(player.level().registryAccess()).copy());
+            itemEntity.setPickUpDelay(0);
+            level.addFreshEntity(itemEntity);
+        }
+        // 更新，否则客户端显示不正确
+        player.inventoryMenu.broadcastFullState();
+        NetworkHandler.sendToClientPlayer(new ServerMessageCraft(this.containerId), player);
     }
 }

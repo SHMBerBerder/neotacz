@@ -3,8 +3,8 @@ package com.tacz.guns.api.event.common;
 import com.tacz.guns.compat.kubejs.events.TimelessClientEvents;
 import com.tacz.guns.compat.kubejs.events.TimelessCommonEvents;
 import com.tacz.guns.compat.kubejs.events.TimelessServerEvents;
-import net.minecraftforge.eventbus.api.Event;
-import net.minecraftforge.fml.ModList;
+import net.neoforged.bus.api.Event;
+import net.neoforged.fml.ModList;
 
 public interface KubeJSGunEventPoster<E extends Event> {
     default void postEventToKubeJS(E event) {

@@ -2,7 +2,8 @@ package com.tacz.guns.entity.shooter;
 
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IGun;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
@@ -36,14 +37,15 @@ public class LivingEntityCrawl {
             return;
         }
         // 如果获取不到 gunIndex，则取消趴下状态
-        ResourceLocation gunId = iGun.getGunId(currentGunItem);
+        Identifier gunId = iGun.getGunId(currentGunItem);
         if (TimelessAPI.getCommonGunIndex(gunId).isEmpty()) {
             data.isCrawling = false;
             this.setCrawlPose();
             return;
         }
         // 如果是观察者模型、骑乘、跳跃、在游泳、不在地上，取消
-        if (shooter.isSpectator() || shooter.isPassenger() || shooter.jumping || shooter.isSwimming() || !shooter.onGround()) {
+        boolean jumping = shooter instanceof ServerPlayer serverPlayer ? serverPlayer.getLastClientInput().jump() : shooter.isJumping();
+        if (shooter.isSpectator() || shooter.isPassenger() || jumping || shooter.isSwimming() || !shooter.onGround()) {
             data.isCrawling = false;
             this.setCrawlPose();
             return;

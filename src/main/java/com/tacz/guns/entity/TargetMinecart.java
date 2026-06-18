@@ -1,6 +1,7 @@
 package com.tacz.guns.entity;
 
 import com.mojang.authlib.GameProfile;
+import com.tacz.guns.GunMod;
 import com.tacz.guns.api.entity.ITargetEntity;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.config.client.RenderConfig;
@@ -10,7 +11,13 @@ import com.tacz.guns.init.ModItems;
 import com.tacz.guns.init.ModSounds;
 import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.event.ServerMessageGunHurt;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
@@ -18,27 +25,25 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.vehicle.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.fml.LogicalSide;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import static net.minecraft.world.entity.vehicle.AbstractMinecart.Type.RIDEABLE;
-
 public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
+    private static final ResourceKey<EntityType<?>> TARGET_MINECART_TYPE_KEY = ResourceKey.create(Registries.ENTITY_TYPE, Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "target_minecart"));
     public static EntityType<TargetMinecart> TYPE = EntityType.Builder.<TargetMinecart>of(TargetMinecart::new, MobCategory.MISC)
             .sized(0.75F, 2.4F)
             .clientTrackingRange(8)
-            .build("target_minecart");
+            .build(TARGET_MINECART_TYPE_KEY);
 
     private @Nullable GameProfile gameProfile = null;
 
@@ -55,7 +60,7 @@ public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
         if (this.level().isClientSide() || this.isRemoved()) {
             return;
         }
-        if (!(source.isIndirect())) {
+        if (source.isDirect()) {
             return;
         }
         Entity sourceEntity = source.getEntity();
@@ -65,29 +70,32 @@ public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
             this.markHurt();
             this.setDamage(10);
             double dis = this.position().distanceTo(sourceEntity.position());
-            player.displayClientMessage(Component.translatable("message.tacz.target_minecart.hit", String.format("%.1f", damage), String.format("%.2f", dis)), true);
+            player.sendOverlayMessage(Component.translatable("message.tacz.target_minecart.hit", String.format("%.1f", damage), String.format("%.2f", dis)));
             // 原版的声音传播距离由 volume 决定
             // 当声音大于 1 时，距离为 = 16 * volume
             float volume = OtherConfig.TARGET_SOUND_DISTANCE.get() / 16.0f;
             volume = Math.max(volume, 0);
-            level().playSound(null, this, ModSounds.TARGET_HIT.get(), SoundSource.BLOCKS, volume, this.level().random.nextFloat() * 0.1F + 0.9F);
+            level().playSound(null, this, ModSounds.TARGET_HIT.get(), SoundSource.BLOCKS, volume, this.level().getRandom().nextFloat() * 0.1F + 0.9F);
 
             if (entity instanceof EntityKineticBullet projectile) {
                 boolean isHeadshot = false;
                 float headshotMultiplier = 1;
-                MinecraftForge.EVENT_BUS.post(new EntityHurtByGunEvent.Post(projectile, this, player, projectile.getGunId(), projectile.getGunDisplayId(), damage, Pair.of(source, source), isHeadshot, headshotMultiplier, LogicalSide.SERVER));
+                NeoForge.EVENT_BUS.post(new EntityHurtByGunEvent.Post(projectile, this, player, projectile.getGunId(), projectile.getGunDisplayId(), damage, Pair.of(source, source), isHeadshot, headshotMultiplier, LogicalSide.SERVER));
                 NetworkHandler.sendToDimension(new ServerMessageGunHurt(projectile.getId(), this.getId(), player.getId(), projectile.getGunId(), projectile.getGunDisplayId(), damage, isHeadshot, headshotMultiplier), this);
             }
         }
     }
 
     @Override
-    public boolean isInvulnerableTo(DamageSource source) {
-        return source.is(DamageTypeTags.IS_EXPLOSION) || super.isInvulnerableTo(source);
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
+        if (source.is(DamageTypeTags.IS_EXPLOSION)) {
+            return false;
+        }
+        return super.hurtServer(level, source, damage);
     }
 
     @Override
-    public boolean canBeRidden() {
+    public boolean isRideable() {
         return false;
     }
 
@@ -102,14 +110,14 @@ public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
     }
 
     @Override
-    public void destroy(DamageSource source) {
-        this.remove(Entity.RemovalReason.KILLED);
-        if (this.level().getGameRules().getBoolean(GameRules.RULE_DOENTITYDROPS)) {
+    protected void destroy(ServerLevel level, DamageSource source) {
+        this.kill(level);
+        if (level.getGameRules().get(GameRules.ENTITY_DROPS)) {
             ItemStack itemStack = new ItemStack(ModItems.TARGET_MINECART.get());
             if (this.hasCustomName()) {
-                itemStack.setHoverName(this.getCustomName());
+                itemStack.set(DataComponents.CUSTOM_NAME, this.getCustomName());
             }
-            this.spawnAtLocation(itemStack);
+            this.spawnAtLocation(level, itemStack);
         }
     }
 
@@ -122,7 +130,7 @@ public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
     public ItemStack getPickResult() {
         ItemStack itemStack = new ItemStack(ModItems.TARGET_MINECART.get());
         if (this.hasCustomName()) {
-            itemStack.setHoverName(this.getCustomName());
+            itemStack.set(DataComponents.CUSTOM_NAME, this.getCustomName());
         }
         return itemStack;
     }
@@ -130,8 +138,8 @@ public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
     @Nullable
     public GameProfile getGameProfile() {
         if (this.gameProfile == null && this.getCustomName() != null) {
-            this.gameProfile = new GameProfile(null, this.getCustomName().getString());
-            SkullBlockEntity.updateGameprofile(this.gameProfile, gameProfile -> this.gameProfile = gameProfile);
+            String name = this.getCustomName().getString();
+            this.gameProfile = new GameProfile(UUIDUtil.createOfflinePlayerUUID(name), name);
         }
         return gameProfile;
     }
@@ -142,14 +150,8 @@ public class TargetMinecart extends AbstractMinecart implements ITargetEntity {
         return ModBlocks.TARGET.get().defaultBlockState();
     }
 
-    @NotNull
     @Override
-    public Type getMinecartType() {
-        return RIDEABLE;
-    }
-
-    @Override
-    public float getMaxCartSpeedOnRail() {
+    protected double getMaxSpeed(ServerLevel level) {
         return 0.2F;
     }
 }

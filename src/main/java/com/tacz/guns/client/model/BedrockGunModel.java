@@ -2,30 +2,40 @@ package com.tacz.guns.client.model;
 
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.client.animation.AnimationListener;
 import com.tacz.guns.api.client.animation.ObjectAnimationChannel;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
+import com.tacz.guns.client.debug.ScopeRenderDebug;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import com.tacz.guns.client.model.bedrock.ModelRendererWrapper;
 import com.tacz.guns.client.model.functional.*;
 import com.tacz.guns.client.model.listener.model.ModelAdditionalMagazineListener;
+import com.tacz.guns.client.renderer.item.FirstPersonHandSway;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import com.tacz.guns.client.resource.pojo.display.gun.TextShow;
 import com.tacz.guns.client.resource.pojo.model.BedrockModelPOJO;
 import com.tacz.guns.client.resource.pojo.model.BedrockVersion;
 import com.tacz.guns.compat.ar.ARCompat;
 import com.tacz.guns.util.RenderHelper;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.SubmitNodeCollection;
+import net.minecraft.client.renderer.feature.phase.FeatureRenderPhase;
+import net.minecraft.client.renderer.feature.submit.SubmitNode;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 
 import javax.annotation.Nullable;
@@ -35,6 +45,8 @@ import java.util.function.Predicate;
 import static com.tacz.guns.client.model.GunModelConstant.*;
 
 public class BedrockGunModel extends BedrockAnimatedModel {
+    public static final int SCOPE_GUN_CLIP_NONE = 0;
+
     protected final EnumMap<AttachmentType, List<BedrockPart>> refitAttachmentViewPath = Maps.newEnumMap(AttachmentType.class);
     private final EnumMap<AttachmentType, ItemStack> currentAttachmentItem = Maps.newEnumMap(AttachmentType.class);
     private final Set<String> adapterToRender = Sets.newHashSet();
@@ -54,6 +66,10 @@ public class BedrockGunModel extends BedrockAnimatedModel {
     protected @Nullable List<BedrockPart> scopePosPath;
     // 枪口火焰定位组
     protected @Nullable List<BedrockPart> muzzleFlashPosPath;
+    // 第一人称左手手臂定位组
+    protected @Nullable List<BedrockPart> leftHandPosPath;
+    // 第一人称右手手臂定位组
+    protected @Nullable List<BedrockPart> rightHandPosPath;
     // 根组
     protected @Nullable BedrockPart root;
     // 弹匣定位组
@@ -126,6 +142,8 @@ public class BedrockGunModel extends BedrockAnimatedModel {
         fixedOriginPath = getPath(modelMap.get(FIXED_ORIGIN_NODE));
         groundOriginPath = getPath(modelMap.get(GROUND_ORIGIN_NODE));
         muzzleFlashPosPath = getPath(modelMap.get(MUZZLE_FLASH_ORIGIN_NODE));
+        leftHandPosPath = getPath(modelMap.get(LEFTHAND_POS_NODE));
+        rightHandPosPath = getPath(modelMap.get(RIGHTHAND_POS_NODE));
         scopePosPath = getPath(modelMap.get(AttachmentType.SCOPE.name().toLowerCase() + ATTACHMENT_POS_SUFFIX));
         laserBeamPaths = getPath(modelMap.get("laser_beam"));
         root = Optional.ofNullable(modelMap.get(ROOT_NODE)).map(ModelRendererWrapper::getModelRenderer).orElse(null);
@@ -192,7 +210,7 @@ public class BedrockGunModel extends BedrockAnimatedModel {
     private static boolean checkShowMuzzle(BedrockPart bedrockPart, ItemStack attachmentItem) {
         IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
         if (iAttachment != null) {
-            ResourceLocation attachmentId = iAttachment.getAttachmentId(attachmentItem);
+            Identifier attachmentId = iAttachment.getAttachmentId(attachmentItem);
             var attachmentIndex = TimelessAPI.getClientAttachmentIndex(attachmentId);
             if (attachmentIndex.isPresent()) {
                 bedrockPart.visible = attachmentIndex.get().isShowMuzzle();
@@ -244,9 +262,202 @@ public class BedrockGunModel extends BedrockAnimatedModel {
     }
 
     public void render(PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType, RenderType renderType, int light, int overlay) {
+        if (!prepareRenderState(gunItem)) {
+            return;
+        }
+        if (laserBeamPaths != null) {
+            BeamRenderer.renderLaserBeam(gunItem, matrixStack, transformType, laserBeamPaths);
+        }
+
+		if (ARCompat.shouldAccelerate()) {
+			renderAccelerated(matrixStack, gunItem, transformType, renderType, light, overlay);
+			return;
+		}
+
+        // 镜子需要先渲染，写入模板值
+        ItemStack attachmentItem = currentAttachmentItem.get(AttachmentType.SCOPE);
+        IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
+        if (scopePosPath != null && attachmentItem != null && !attachmentItem.isEmpty()) {
+            matrixStack.pushPose();
+            for (BedrockPart bedrockPart : scopePosPath) {
+                bedrockPart.translateAndRotateAndScale(matrixStack);
+            }
+            AttachmentRender.renderAttachment(attachmentItem, currentGunItem, matrixStack, transformType, light, overlay);
+            matrixStack.popPose();
+            // 开启模板测试，因为镜内不渲染枪体
+            boolean stencilEnabled = false;
+            if (iAttachment != null) {
+                Optional<ClientAttachmentIndex> attachmentIndex = TimelessAPI.getClientAttachmentIndex(iAttachment.getAttachmentId(attachmentItem));
+                if (attachmentIndex.isPresent()) {
+                    ClientAttachmentIndex index = attachmentIndex.get();
+                    if (index.isScope() && index.isSight()) { // 组合镜
+                        RenderHelper.enableItemEntityStencilTest();
+                        RenderHelper.stencilFunc(GL11.GL_GREATER, 127, 0xFF);
+                        stencilEnabled = true;
+                    } else if (index.isScope()) { // 长筒镜
+                        RenderHelper.enableItemEntityStencilTest();
+                        RenderHelper.stencilFunc(GL11.GL_EQUAL, 0, 0xFF);
+                        stencilEnabled = true;
+                    }
+                }
+            }
+            try {
+                if (stencilEnabled) {
+                    RenderHelper.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+                }
+                super.render(matrixStack, transformType, renderType, light, overlay);
+            } finally {
+                if (stencilEnabled) {
+                    RenderHelper.disableItemEntityStencilTest();
+                    RenderHelper.clearStencilBuffer();
+                }
+            }
+            return;
+        }
+        super.render(matrixStack, transformType, renderType, light, overlay);
+    }
+
+    public void renderToBuffer(PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType, VertexConsumer buffer, int light, int overlay) {
+        if (!prepareRenderState(gunItem)) {
+            return;
+        }
+        boolean suppressFunctionalExtras = RenderHelper.areDeferredRenderersSuppressed();
+        boolean collectingDeferredRenderers = RenderHelper.isCollectingDeferredFunctionalRenderers();
+        // Submit callbacks still need the full non-accelerated gun render side effects owned by render(...).
+        if (!suppressFunctionalExtras && laserBeamPaths != null) {
+            BeamRenderer.renderLaserBeam(gunItem, matrixStack, transformType, laserBeamPaths);
+        }
+
+        ItemStack attachmentItem = currentAttachmentItem.get(AttachmentType.SCOPE);
+        IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
+        boolean hasMountedScope = scopePosPath != null && attachmentItem != null && !attachmentItem.isEmpty();
+        ScopeRenderDebug.path("gun_model_render_to_buffer", attachmentItem, currentGunItem, transformType,
+                "collecting=" + collectingDeferredRenderers + ",mounted=" + hasMountedScope + ",scopePos=" + (scopePosPath != null));
+        if (collectingDeferredRenderers && hasMountedScope && !transformType.firstPerson()) {
+            matrixStack.pushPose();
+            for (BedrockPart bedrockPart : scopePosPath) {
+                bedrockPart.translateAndRotateAndScale(matrixStack);
+            }
+            AttachmentRender.submitMountedAttachment(attachmentItem, currentGunItem, matrixStack, transformType, light, overlay);
+            matrixStack.popPose();
+        }
+
+        if (!collectingDeferredRenderers && hasMountedScope) {
+            // MC 26.2 retained custom geometry records vertices first and draws later from RenderType
+            // state. GL stencil calls here would not clip the later gun draw, so first-person
+            // mounted scope masking is handled by ScopeStencilFeatureRenderer's integrated
+            // scope+gun feature pass.
+            super.renderToBuffer(matrixStack, transformType, buffer, light, overlay);
+            return;
+        }
+        super.renderToBuffer(matrixStack, transformType, buffer, light, overlay);
+    }
+
+    public void collectDeferredFunctionalRenderers(PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType, int light, int overlay) {
+        renderToBuffer(matrixStack, gunItem, transformType, RenderHelper.noopVertexConsumer(), light, overlay);
+    }
+
+    public boolean submitFirstPersonScopeStencilPass(SubmitNodeCollector collector, PoseStack matrixStack,
+                                                     AbstractClientPlayer player, ItemStack gunItem,
+                                                     ItemDisplayContext transformType, RenderType gunRenderType,
+                                                     Identifier gunTexture, int light, int overlay, int order,
+                                                     FirstPersonHandSway handSway, boolean renderHandForCallback) {
+        if (collector == null || !transformType.firstPerson() || !prepareRenderState(gunItem)) {
+            return false;
+        }
+        ItemStack attachmentItem = currentAttachmentItem.get(AttachmentType.SCOPE);
+        IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
+        if (scopePosPath == null || attachmentItem == null || attachmentItem.isEmpty() || iAttachment == null) {
+            return false;
+        }
+        Optional<ClientAttachmentIndex> attachmentIndexOptional = TimelessAPI.getClientAttachmentIndex(iAttachment.getAttachmentId(attachmentItem));
+        if (attachmentIndexOptional.isEmpty()) {
+            return false;
+        }
+        ClientAttachmentIndex attachmentIndex = attachmentIndexOptional.get();
+        BedrockAttachmentModel attachmentModel = attachmentIndex.getAttachmentModel();
+        Identifier attachmentTexture = attachmentIndex.getModelTexture();
+        if (attachmentModel == null || attachmentTexture == null || (!attachmentIndex.isScope() && !attachmentIndex.isSight())) {
+            ScopeRenderDebug.resolvedAttachment(attachmentItem, gunItem, transformType, attachmentIndex,
+                    attachmentTexture, attachmentModel != null, false, "missing_scope_stencil_model_or_texture");
+            return false;
+        }
+        if (!ScopeStencilFeatureRenderer.canStageIntegratedPass(attachmentModel)) {
+            ScopeRenderDebug.resolvedAttachment(attachmentItem, gunItem, transformType, attachmentIndex,
+                    attachmentTexture, true, false, "integrated_scope_gun_missing_required_paths");
+            return false;
+        }
+
+        RenderType attachmentRenderType = RenderTypes.entityCutout(attachmentTexture);
+        int activeScopeViewIndex = resolveActiveScopeViewIndex(iAttachment, attachmentItem, attachmentIndex);
+        ScopeRenderDebug.resolvedAttachment(attachmentItem, gunItem, transformType, attachmentIndex,
+                attachmentTexture, true, true, "integrated_scope_gun_feature");
+
+        OrderedSubmitNodeCollector orderedCollector = collector.order(order - 100_000);
+        if (!(orderedCollector instanceof SubmitNodeCollection collection)) {
+            ScopeRenderDebug.resolvedAttachment(attachmentItem, gunItem, transformType, attachmentIndex,
+                    attachmentTexture, true, false, "scope_stencil_feature_collector_unavailable");
+            return false;
+        }
+
+        PoseStack gunPose = copyPose(matrixStack);
+
+        if (collection.allPhases().isEmpty()) {
+            ScopeRenderDebug.resolvedAttachment(attachmentItem, gunItem, transformType, attachmentIndex,
+                    attachmentTexture, true, false, "scope_stencil_feature_phase_unavailable");
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        FeatureRenderPhase<SubmitNode> scopePhase = (FeatureRenderPhase<SubmitNode>) collection.allPhases().get(0);
+        scopePhase.submit(new ScopeStencilFeatureRenderer.ScopeSubmit(
+                this,
+                attachmentModel,
+                player,
+                gunItem,
+                attachmentItem,
+                transformType,
+                gunRenderType,
+                attachmentRenderType,
+                gunTexture,
+                attachmentTexture,
+                new Matrix4f(gunPose.last().pose()),
+                new Matrix3f(gunPose.last().normal()),
+                handSway,
+                renderHandForCallback,
+                activeScopeViewIndex,
+                light,
+                overlay
+        ));
+        return true;
+    }
+
+    private static int resolveActiveScopeViewIndex(IAttachment attachment, ItemStack attachmentItem,
+                                                   ClientAttachmentIndex attachmentIndex) {
+        int[] views = attachmentIndex.getViews();
+        if (views.length == 0) {
+            return -1;
+        }
+        int zoomNumber = attachment.getZoomNumber(attachmentItem);
+        return views[Math.floorMod(zoomNumber, views.length)] - 1;
+    }
+
+    void renderGunBodyToBuffer(PoseStack matrixStack, ItemDisplayContext transformType, VertexConsumer buffer,
+                               int light, int overlay) {
+        super.renderToBuffer(matrixStack, transformType, buffer, light, overlay);
+    }
+
+    private static PoseStack copyPose(PoseStack source) {
+        PoseStack copy = new PoseStack();
+        copy.last().pose().set(source.last().pose());
+        copy.last().normal().set(source.last().normal());
+        return copy;
+    }
+
+    private boolean prepareRenderState(ItemStack gunItem) {
         IGun iGun = IGun.getIGunOrNull(gunItem);
         if (iGun == null) {
-            return;
+            return false;
         }
         currentGunItem = gunItem;
         currentExtendMagLevel = 0;
@@ -279,44 +490,7 @@ public class BedrockGunModel extends BedrockAnimatedModel {
                 });
             }
         }
-        if (laserBeamPaths != null) {
-            BeamRenderer.renderLaserBeam(gunItem, matrixStack, transformType, laserBeamPaths);
-        }
-
-		if (ARCompat.shouldAccelerate()) {
-			renderAccelerated(matrixStack, gunItem, transformType, renderType, light, overlay);
-			return;
-		}
-
-        // 镜子需要先渲染，写入模板值
-        ItemStack attachmentItem = currentAttachmentItem.get(AttachmentType.SCOPE);
-        IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
-        if (scopePosPath != null && attachmentItem != null && !attachmentItem.isEmpty()) {
-            matrixStack.pushPose();
-            for (BedrockPart bedrockPart : scopePosPath) {
-                bedrockPart.translateAndRotateAndScale(matrixStack);
-            }
-            AttachmentRender.renderAttachment(attachmentItem, currentGunItem, matrixStack, transformType, light, overlay);
-            matrixStack.popPose();
-            // 开启模板测试，因为镜内不渲染枪体
-            if (iAttachment != null) {
-                Optional<ClientAttachmentIndex> attachmentIndex = TimelessAPI.getClientAttachmentIndex(iAttachment.getAttachmentId(attachmentItem));
-                attachmentIndex.ifPresent(index -> {
-                    if (index.isScope() && index.isSight()) { // 组合镜
-                        RenderHelper.enableItemEntityStencilTest();
-                        RenderSystem.stencilFunc(GL11.GL_GREATER, 127, 0xFF);
-                    } else if (index.isScope()) { // 长筒镜
-                        RenderHelper.enableItemEntityStencilTest();
-                        RenderSystem.stencilFunc(GL11.GL_EQUAL, 0, 0xFF);
-                    }
-                });
-            }
-        }
-        RenderSystem.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
-        super.render(matrixStack, transformType, renderType, light, overlay);
-        RenderHelper.disableItemEntityStencilTest();
-        RenderSystem.clearStencil(0);
-        RenderSystem.clear(GL11.GL_STENCIL_BUFFER_BIT, Minecraft.ON_OSX);
+        return true;
     }
 
 	public void renderAccelerated(PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType, RenderType renderType, int light, int overlay) {
@@ -341,50 +515,53 @@ public class BedrockGunModel extends BedrockAnimatedModel {
 
 				// 这里不用ifPresent是因为需要设置useStencil, lambda无法设置局部变量
 				if (attachmentIndex.isPresent()) {
-					// 如果有attachment, 则设置层前任务开启模板缓冲区设置对应的模板函数
-					ARCompat.setRenderBeforeFunction(() -> {
-						// 获取实际的attachmentIndex
-						var index = attachmentIndex.get();
+					var index = attachmentIndex.get();
+					if (index.isScope()) {
+						// 如果有attachment, 则设置层前任务开启模板缓冲区设置对应的模板函数
+						ARCompat.setRenderBeforeFunction(() -> {
+							if (index.isSight()) { // 组合镜
+								RenderHelper.enableItemEntityStencilTest();
+								RenderHelper.stencilFunc(GL11.GL_GREATER, 127, 0xFF);
+							} else { // 长筒镜
+								RenderHelper.enableItemEntityStencilTest();
+								RenderHelper.stencilFunc(GL11.GL_EQUAL, 0, 0xFF);
+							}
 
-						if (index.isScope() && index.isSight()) { // 组合镜
-							RenderHelper.enableItemEntityStencilTest();
-							RenderSystem.stencilFunc(GL11.GL_GREATER, 127, 0xFF);
-						} else if (index.isScope()) { // 长筒镜
-							RenderHelper.enableItemEntityStencilTest();
-							RenderSystem.stencilFunc(GL11.GL_EQUAL, 0, 0xFF);
-						}
+							// 设置不改变任何模板值, 这里本来是无论是否有attachment都要执行的, 但是如果不执行到这里模板测试自然不会开启
+							// 也就无论如何都不会改变模板值, 所以一同在此处设置应该也没有问题
+							RenderHelper.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+						});
 
-						// 设置不改变任何模板值, 这里本来是无论是否有attachment都要执行的, 但是如果不执行到这里模板测试自然不会开启
-						// 也就无论如何都不会改变模板值, 所以一同在此处设置应该也没有问题
-						RenderSystem.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
-					});
-
-					// 确认使用层前行为, 应在渲染完毕后重置层前行为
-					useStencil = true;
+						// 确认使用层前行为, 应在渲染完毕后重置层前行为
+						useStencil = true;
+					}
 				}
 			}
 		}
 
 		ARCompat.setRenderLayer(-943 + 3);
 
-		// 设置层后任务
-		ARCompat.setRenderAfterFunction(() -> {
-			// 关闭模板测试
-			RenderHelper.disableItemEntityStencilTest();
-			// 重置模板缓冲区
-			RenderSystem.clearStencil(0);
-			RenderSystem.clear(GL11.GL_STENCIL_BUFFER_BIT, Minecraft.ON_OSX);
-		});
-
-		super.render(matrixStack, transformType, renderType, light, overlay);
-
-		// 重置层和层后任务, 还原现场
-		ARCompat.resetRenderLayer();
-		ARCompat.resetRenderAfterFunction();
-
-		// 如果使用了层前行为, 则进行重置, 还原现场
 		if (useStencil) {
-			ARCompat.resetRenderBeforeFunction();
+			// 设置层后任务
+			ARCompat.setRenderAfterFunction(() -> {
+				// 关闭模板测试
+				RenderHelper.disableItemEntityStencilTest();
+				// 重置模板缓冲区
+				RenderHelper.clearStencilBuffer();
+			});
+		}
+
+		try {
+			super.render(matrixStack, transformType, renderType, light, overlay);
+		} finally {
+			// 重置层和层后任务, 还原现场
+			ARCompat.resetRenderLayer();
+
+			// 如果使用了层前/层后行为, 则进行重置, 还原现场
+			if (useStencil) {
+				ARCompat.resetRenderBeforeFunction();
+				ARCompat.resetRenderAfterFunction();
+			}
 		}
 	}
 
@@ -473,6 +650,16 @@ public class BedrockGunModel extends BedrockAnimatedModel {
     @Nullable
     public List<BedrockPart> getMuzzleFlashPosPath() {
         return muzzleFlashPosPath;
+    }
+
+    @Nullable
+    public List<BedrockPart> getLeftHandPosPath() {
+        return leftHandPosPath;
+    }
+
+    @Nullable
+    public List<BedrockPart> getRightHandPosPath() {
+        return rightHandPosPath;
     }
 
     @Nullable

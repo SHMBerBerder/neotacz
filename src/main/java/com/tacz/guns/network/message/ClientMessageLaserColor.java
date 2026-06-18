@@ -7,7 +7,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.network.NetworkEvent;
+import com.tacz.guns.network.NetworkContext;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -58,8 +58,8 @@ public class ClientMessageLaserColor {
         return message;
     }
 
-    public static void handle(ClientMessageLaserColor message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
+    public static void handle(ClientMessageLaserColor message, Supplier<NetworkContext> contextSupplier) {
+        NetworkContext context = contextSupplier.get();
         if (context.getDirection().getReceptionSide().isServer()) {
             context.enqueueWork(() -> {
                 ServerPlayer player = context.getSender();
@@ -67,6 +67,9 @@ public class ClientMessageLaserColor {
                     return;
                 }
                 Inventory inventory = player.getInventory();
+                if (isInvalidSlot(inventory, message.gunSlotIndex)) {
+                    return;
+                }
                 ItemStack gunItem = inventory.getItem(message.gunSlotIndex);
                 IGun iGun = IGun.getIGunOrNull(gunItem);
                 if (iGun != null) {
@@ -85,6 +88,10 @@ public class ClientMessageLaserColor {
             });
         }
         context.setPacketHandled(true);
+    }
+
+    private static boolean isInvalidSlot(Inventory inventory, int slot) {
+        return slot < 0 || slot >= inventory.getContainerSize();
     }
 
 }

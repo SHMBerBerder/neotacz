@@ -1,32 +1,23 @@
 package com.tacz.guns.network.message.event;
 
-import com.tacz.guns.api.event.common.EntityKillByGunEvent;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
+import com.tacz.guns.network.NetworkContext;
+import com.tacz.guns.network.NetworkHandler;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.LogicalSide;
-import net.minecraftforge.network.NetworkEvent;
+import net.minecraft.resources.Identifier;
 
-import javax.annotation.Nullable;
 import java.util.function.Supplier;
 
 public class ServerMessageGunKill {
     private final int bulletId;
     private final int killEntityId;
     private final int attackerId;
-    private final ResourceLocation gunId;
-    private final ResourceLocation gunDisplayId;
+    private final Identifier gunId;
+    private final Identifier gunDisplayId;
     private final boolean isHeadShot;
     private final float baseDamage;
     private final float headshotMultiplier;
 
-    public ServerMessageGunKill(int bulletId, int killEntityId, int attackerId, ResourceLocation gunId, ResourceLocation gunDisplayId, float baseDamage, boolean isHeadShot, float headshotMultiplier) {
+    public ServerMessageGunKill(int bulletId, int killEntityId, int attackerId, Identifier gunId, Identifier gunDisplayId, float baseDamage, boolean isHeadShot, float headshotMultiplier) {
         this.bulletId = bulletId;
         this.killEntityId = killEntityId;
         this.attackerId = attackerId;
@@ -41,8 +32,8 @@ public class ServerMessageGunKill {
         buf.writeInt(message.bulletId);
         buf.writeInt(message.killEntityId);
         buf.writeInt(message.attackerId);
-        buf.writeResourceLocation(message.gunId);
-        buf.writeResourceLocation(message.gunDisplayId);
+        buf.writeIdentifier(message.gunId);
+        buf.writeIdentifier(message.gunDisplayId);
         buf.writeFloat(message.baseDamage);
         buf.writeBoolean(message.isHeadShot);
         buf.writeFloat(message.headshotMultiplier);
@@ -52,31 +43,47 @@ public class ServerMessageGunKill {
         int bulletId = buf.readInt();
         int killEntityId = buf.readInt();
         int attackerId = buf.readInt();
-        ResourceLocation gunId = buf.readResourceLocation();
-        ResourceLocation gunDisplayId = buf.readResourceLocation();
+        Identifier gunId = buf.readIdentifier();
+        Identifier gunDisplayId = buf.readIdentifier();
         float baseDamage = buf.readFloat();
         boolean isHeadShot = buf.readBoolean();
         float headshotMultiplier = buf.readFloat();
         return new ServerMessageGunKill(bulletId, killEntityId, attackerId, gunId, gunDisplayId, baseDamage, isHeadShot, headshotMultiplier);
     }
 
-    public static void handle(ServerMessageGunKill message, Supplier<NetworkEvent.Context> contextSupplier) {
-        NetworkEvent.Context context = contextSupplier.get();
-        if (context.getDirection().getReceptionSide().isClient()) {
-            context.enqueueWork(() -> onKill(message));
-        }
-        context.setPacketHandled(true);
+    public static void handle(ServerMessageGunKill message, Supplier<NetworkContext> contextSupplier) {
+        NetworkHandler.handleClientboundMessage(message, contextSupplier);
     }
 
-    @OnlyIn(Dist.CLIENT)
-    private static void onKill(ServerMessageGunKill message) {
-        ClientLevel level = Minecraft.getInstance().level;
-        if (level == null) {
-            return;
-        }
-        @Nullable Entity bullet = level.getEntity(message.bulletId);
-        @Nullable LivingEntity killedEntity = level.getEntity(message.killEntityId) instanceof LivingEntity livingEntity ? livingEntity : null;
-        @Nullable LivingEntity attacker = level.getEntity(message.attackerId) instanceof LivingEntity livingEntity ? livingEntity : null;
-        MinecraftForge.EVENT_BUS.post(new EntityKillByGunEvent(bullet, killedEntity, attacker, message.gunId, message.gunDisplayId, message.baseDamage, null, message.isHeadShot, message.headshotMultiplier, LogicalSide.CLIENT));
+    public int getBulletId() {
+        return bulletId;
+    }
+
+    public int getKillEntityId() {
+        return killEntityId;
+    }
+
+    public int getAttackerId() {
+        return attackerId;
+    }
+
+    public Identifier getGunId() {
+        return gunId;
+    }
+
+    public Identifier getGunDisplayId() {
+        return gunDisplayId;
+    }
+
+    public boolean isHeadShot() {
+        return isHeadShot;
+    }
+
+    public float getBaseDamage() {
+        return baseDamage;
+    }
+
+    public float getHeadshotMultiplier() {
+        return headshotMultiplier;
     }
 }

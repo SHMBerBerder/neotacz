@@ -12,11 +12,11 @@ import com.tacz.guns.resource.index.CommonGunIndex;
 import com.tacz.guns.resource.pojo.data.attachment.MeleeData;
 import com.tacz.guns.resource.pojo.data.gun.GunDefaultMeleeData;
 import com.tacz.guns.resource.pojo.data.gun.GunMeleeData;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.LogicalSide;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.fml.LogicalSide;
 
 import javax.annotation.Nullable;
 import java.util.Optional;
@@ -50,14 +50,14 @@ public class LivingEntityMelee {
         }
         ItemStack currentGunItem = data.currentGunItem.get();
         // 触发近战事件
-        if (MinecraftForge.EVENT_BUS.post(new GunMeleeEvent(shooter, currentGunItem, LogicalSide.SERVER))) {
+        if (NeoForge.EVENT_BUS.post(new GunMeleeEvent(shooter, currentGunItem, LogicalSide.SERVER)).isCanceled()) {
             return;
         }
         NetworkHandler.sendToTrackingEntity(new ServerMessageGunMelee(shooter.getId(), currentGunItem), shooter);
         if (currentGunItem.getItem() instanceof AbstractGunItem logicGun) {
             data.meleeTimestamp = System.currentTimeMillis();
 
-            ResourceLocation muzzleId = logicGun.getAttachmentId(currentGunItem, AttachmentType.MUZZLE);
+            Identifier muzzleId = logicGun.getAttachmentId(currentGunItem, AttachmentType.MUZZLE);
             MeleeData muzzleMeleeData = getMeleeData(muzzleId);
             if (muzzleMeleeData != null) {
                 float prepTime = muzzleMeleeData.getPrepTime();
@@ -65,7 +65,7 @@ public class LivingEntityMelee {
                 return;
             }
 
-            ResourceLocation stockId = logicGun.getAttachmentId(currentGunItem, AttachmentType.STOCK);
+            Identifier stockId = logicGun.getAttachmentId(currentGunItem, AttachmentType.STOCK);
             MeleeData stockMeleeData = getMeleeData(stockId);
             if (stockMeleeData != null) {
                 float prepTime = stockMeleeData.getPrepTime();
@@ -73,7 +73,7 @@ public class LivingEntityMelee {
                 return;
             }
 
-            ResourceLocation gunId = logicGun.getGunId(currentGunItem);
+            Identifier gunId = logicGun.getGunId(currentGunItem);
             TimelessAPI.getCommonGunIndex(gunId).ifPresent(index -> {
                 GunDefaultMeleeData defaultMeleeData = index.getGunData().getMeleeData().getDefaultMeleeData();
                 if (defaultMeleeData == null) {
@@ -110,19 +110,19 @@ public class LivingEntityMelee {
         if (!(currentGunItem.getItem() instanceof IGun iGun)) {
             return 0;
         }
-        ResourceLocation gunId = iGun.getGunId(currentGunItem);
+        Identifier gunId = iGun.getGunId(currentGunItem);
         Optional<CommonGunIndex> gunIndex = TimelessAPI.getCommonGunIndex(gunId);
         return gunIndex.map(index -> {
             GunMeleeData meleeData = index.getGunData().getMeleeData();
             // 获取枪口，看看有没有近战数据
-            ResourceLocation muzzleId = iGun.getAttachmentId(currentGunItem, AttachmentType.MUZZLE);
+            Identifier muzzleId = iGun.getAttachmentId(currentGunItem, AttachmentType.MUZZLE);
             MeleeData muzzleMeleeData = getMeleeData(muzzleId);
             if (muzzleMeleeData != null) {
                 return getTotalCooldownTime(meleeData, muzzleMeleeData.getCooldown());
             }
 
             // 枪托
-            ResourceLocation stockId = iGun.getAttachmentId(currentGunItem, AttachmentType.STOCK);
+            Identifier stockId = iGun.getAttachmentId(currentGunItem, AttachmentType.STOCK);
             MeleeData stockMeleeData = getMeleeData(stockId);
             if (stockMeleeData != null) {
                 return getTotalCooldownTime(meleeData, stockMeleeData.getCooldown());
@@ -146,7 +146,7 @@ public class LivingEntityMelee {
     }
 
     @Nullable
-    private MeleeData getMeleeData(ResourceLocation attachmentId) {
+    private MeleeData getMeleeData(Identifier attachmentId) {
         if (DefaultAssets.isEmptyAttachmentId(attachmentId)) {
             return null;
         }

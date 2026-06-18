@@ -18,15 +18,15 @@ import dev.kosmx.playerAnim.core.util.Ease;
 import dev.kosmx.playerAnim.minecraftApi.PlayerAnimationAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.neoforged.bus.api.SubscribeEvent;
 
 public class AnimationManager {
     public static boolean hasPlayerAnimator3rd(GunDisplayInstance display) {
-        ResourceLocation location = display.getPlayerAnimator3rd();
+        Identifier location = display.getPlayerAnimator3rd();
         if (location == null) {
             return false;
         }
@@ -39,8 +39,8 @@ public class AnimationManager {
 
     public static void playRotationAnimation(AbstractClientPlayer player, GunDisplayInstance display) {
         String animationName = AnimationName.EMPTY;
-        ResourceLocation dataId = PlayerAnimatorCompat.ROTATION_ANIMATION;
-        ResourceLocation animator3rd = display.getPlayerAnimator3rd();
+        Identifier dataId = PlayerAnimatorCompat.ROTATION_ANIMATION;
+        Identifier animator3rd = display.getPlayerAnimator3rd();
         if (animator3rd == null) {
             return;
         }
@@ -147,8 +147,8 @@ public class AnimationManager {
     }
 
     @SuppressWarnings("unchecked")
-    public static void playLoopAnimation(AbstractClientPlayer player, GunDisplayInstance display, ResourceLocation dataId, String animationName) {
-        ResourceLocation animator3rd = display.getPlayerAnimator3rd();
+    public static void playLoopAnimation(AbstractClientPlayer player, GunDisplayInstance display, Identifier dataId, String animationName) {
+        Identifier animator3rd = display.getPlayerAnimator3rd();
         if (animator3rd == null) {
             return;
         }
@@ -175,8 +175,8 @@ public class AnimationManager {
     }
 
     @SuppressWarnings("unchecked")
-    public static void playOnceAnimation(AbstractClientPlayer player, GunDisplayInstance display, ResourceLocation dataId, String animationName) {
-        ResourceLocation animator3rd = display.getPlayerAnimator3rd();
+    public static void playOnceAnimation(AbstractClientPlayer player, GunDisplayInstance display, Identifier dataId, String animationName) {
+        Identifier animator3rd = display.getPlayerAnimator3rd();
         if (animator3rd == null) {
             return;
         }
@@ -210,7 +210,7 @@ public class AnimationManager {
 
 
     @SuppressWarnings("unchecked")
-    private static void stopAnimation(AbstractClientPlayer player, ResourceLocation dataId, int fadeTime) {
+    private static void stopAnimation(AbstractClientPlayer player, Identifier dataId, int fadeTime) {
         var associatedData = PlayerAnimationAccess.getPlayerAssociatedData(player);
         var modifierLayer = (ModifierLayer<IAnimation>) associatedData.get(dataId);
         if (modifierLayer != null && modifierLayer.isActive()) {

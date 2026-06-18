@@ -5,7 +5,7 @@ import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
 import dev.latvian.mods.kubejs.event.EventHandler;
 import dev.latvian.mods.kubejs.script.ScriptType;
 import dev.latvian.mods.kubejs.script.ScriptTypePredicate;
-import net.minecraftforge.eventbus.api.Event;
+import net.neoforged.bus.api.Event;
 
 import java.util.HashMap;
 import java.util.Map;

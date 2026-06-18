@@ -1,14 +1,15 @@
 package com.tacz.guns.event;
 
-import com.tacz.guns.util.CycleTaskHelper;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.fml.common.EventBusSubscriber;
 
-@Mod.EventBusSubscriber
+import com.tacz.guns.util.CycleTaskHelper;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
+
+@EventBusSubscriber
 public class ServerTickEvent {
     @SubscribeEvent
-    public static void onServerTick(TickEvent.ServerTickEvent event) {
+    public static void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
         // 更新 CycleTaskHelper 中的任务
         CycleTaskHelper.tick();
     }

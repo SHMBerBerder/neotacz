@@ -7,7 +7,7 @@ import com.github.argon4w.acceleratedrendering.features.items.AcceleratedItemRen
 import com.github.argon4w.acceleratedrendering.features.text.AcceleratedTextRenderingFeature;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 
 public class ARCompatImpl {
@@ -81,7 +81,7 @@ public class ARCompatImpl {
 				new BeamRenderContext(z, width, fadeOut),
 				poseStack.last().pose(),
 				poseStack.last().normal(),
-				LightTexture.pack(15, 15),
+				LightCoordsUtil.pack(15, 15),
 				OverlayTexture.NO_OVERLAY,
 				color
 		);

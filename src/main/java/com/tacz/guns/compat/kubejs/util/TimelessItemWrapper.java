@@ -7,7 +7,7 @@ import com.tacz.guns.api.item.builder.BlockItemBuilder;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.item.AmmoItem;
 import com.tacz.guns.item.AttachmentItem;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
@@ -59,31 +59,31 @@ public class TimelessItemWrapper {
         return itemBuilder.build();
     }
 
-    public static ItemStack of(ResourceLocation id) {
+    public static ItemStack of(Identifier id) {
         return ItemIndexInfo.createFromResourceLocation(id).getItemStack();
     }
 
-    public static ItemStack of(Item item, ResourceLocation id) {
+    public static ItemStack of(Item item, Identifier id) {
         return ItemIndexInfo.createFromResourceLocation(id).getItemStack(item);
     }
 
     public static class ItemIndexInfo {
         private static final String FALL_BACK = "error";
         private final String parent;
-        private final ResourceLocation indexId;
+        private final Identifier indexId;
         private static final ItemIndexInfo DEFAULT = new ItemIndexInfo(FALL_BACK, DefaultAssets.EMPTY_GUN_ID);
 
         private ItemIndexInfo(String pNamespace, String pParent, String pPath) {
             this.parent = (isTypeValid(pParent)) ? pParent : FALL_BACK;
-            this.indexId = new ResourceLocation(pNamespace, pPath);
+            this.indexId = Identifier.fromNamespaceAndPath(pNamespace, pPath);
         }
 
-        private ItemIndexInfo(String pParent, ResourceLocation pLocation) {
+        private ItemIndexInfo(String pParent, Identifier pLocation) {
             this.parent = (isTypeValid(pParent)) ? pParent : FALL_BACK;
             this.indexId = (pLocation != null) ? pLocation : DefaultAssets.EMPTY_GUN_ID;
         }
 
-        public static ItemIndexInfo createFromResourceLocation(ResourceLocation id) {
+        public static ItemIndexInfo createFromResourceLocation(Identifier id) {
             String namespace = id.getNamespace();
             String path = id.getPath();
             int i = path.indexOf("/");
@@ -96,7 +96,7 @@ public class TimelessItemWrapper {
         }
 
         public static ItemIndexInfo create(String pLocation) {
-            ResourceLocation id = new ResourceLocation(pLocation);
+            Identifier id = Identifier.parse(pLocation);
             return createFromResourceLocation(id);
         }
 
@@ -104,7 +104,7 @@ public class TimelessItemWrapper {
             return parent;
         }
 
-        public ResourceLocation getIndexId() {
+        public Identifier getIndexId() {
             return indexId;
         }
 

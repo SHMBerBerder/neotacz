@@ -5,11 +5,12 @@ import com.tacz.guns.block.TargetBlock;
 import com.tacz.guns.config.common.OtherConfig;
 import com.tacz.guns.init.ModBlocks;
 import com.tacz.guns.init.ModSounds;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Util;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtUtils;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
@@ -18,24 +19,27 @@ import net.minecraft.world.Nameable;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.BlockHitResult;
 
-import javax.annotation.Nullable;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.jetbrains.annotations.Nullable;
 
 import static com.tacz.guns.block.TargetBlock.OUTPUT_POWER;
 import static com.tacz.guns.block.TargetBlock.STAND;
 
 public class TargetBlockEntity extends BlockEntity implements Nameable {
-    public static final BlockEntityType<TargetBlockEntity> TYPE = BlockEntityType.Builder.of(TargetBlockEntity::new, ModBlocks.TARGET.get()).build(null);
     /**
      * 标靶复位时间，暂定为 5 秒
      */
     private static final int RESET_TIME = 5 * 20;
     private static final String OWNER_TAG = "Owner";
+    private static final String OWNER_NAME_TAG = "Name";
+    private static final String OWNER_ID_TAG = "Id";
     private static final String CUSTOM_NAME_TAG = "CustomName";
     public float rot = 0;
     public float oRot = 0;
@@ -43,7 +47,7 @@ public class TargetBlockEntity extends BlockEntity implements Nameable {
     private @Nullable Component name;
 
     public TargetBlockEntity(BlockPos pos, BlockState blockState) {
-        super(TYPE, pos, blockState);
+        super(ModBlocks.TARGET_BE.get(), pos, blockState);
     }
 
     public static void clientTick(Level level, BlockPos pos, BlockState state, TargetBlockEntity pBlockEntity) {
@@ -61,32 +65,25 @@ public class TargetBlockEntity extends BlockEntity implements Nameable {
     }
 
     public void setOwner(@Nullable GameProfile owner) {
-        this.owner = owner;
-        SkullBlockEntity.updateGameprofile(this.owner, gameProfile -> {
-            this.owner = gameProfile;
-            this.refresh();
-        });
+        this.owner = normalizeOwner(owner);
+        this.refresh();
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
-        if (tag.contains(OWNER_TAG, Tag.TAG_COMPOUND)) {
-            this.owner = NbtUtils.readGameProfile(tag.getCompound(OWNER_TAG));
-        }
-        if (tag.contains(CUSTOM_NAME_TAG, Tag.TAG_STRING)) {
-            this.name = Component.Serializer.fromJson(tag.getString(CUSTOM_NAME_TAG));
-        }
+    protected void loadAdditional(ValueInput input) {
+        super.loadAdditional(input);
+        this.owner = input.read(OWNER_TAG, CompoundTag.CODEC).map(TargetBlockEntity::readOwner).orElse(null);
+        this.name = BlockEntity.parseCustomNameSafe(input, CUSTOM_NAME_TAG);
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
+    protected void saveAdditional(ValueOutput output) {
+        super.saveAdditional(output);
         if (owner != null) {
-            tag.put(OWNER_TAG, NbtUtils.writeGameProfile(new CompoundTag(), owner));
+            output.store(OWNER_TAG, CompoundTag.CODEC, writeOwner(owner));
         }
         if (this.name != null) {
-            tag.putString(CUSTOM_NAME_TAG, Component.Serializer.toJson(this.name));
+            output.store(CUSTOM_NAME_TAG, ComponentSerialization.CODEC, this.name);
         }
     }
 
@@ -111,8 +108,8 @@ public class TargetBlockEntity extends BlockEntity implements Nameable {
     }
 
     @Override
-    public CompoundTag getUpdateTag() {
-        return saveWithoutMetadata();
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        return saveCustomOnly(registries);
     }
 
     public void refresh() {
@@ -121,11 +118,6 @@ public class TargetBlockEntity extends BlockEntity implements Nameable {
             BlockState state = level.getBlockState(worldPosition);
             level.sendBlockUpdated(worldPosition, state, state, Block.UPDATE_ALL);
         }
-    }
-
-    @Override
-    public AABB getRenderBoundingBox() {
-        return new AABB(worldPosition.offset(-2, 0, -2), worldPosition.offset(2, 2, 2));
     }
 
     public void hit(Level level, BlockState state, BlockHitResult hit, boolean isUpperBlock) {
@@ -143,7 +135,50 @@ public class TargetBlockEntity extends BlockEntity implements Nameable {
             // 当声音大于 1 时，距离为 = 16 * volume
             float volume = OtherConfig.TARGET_SOUND_DISTANCE.get() / 16.0f;
             volume = Math.max(volume, 0);
-            level.playSound(null, blockPos, ModSounds.TARGET_HIT.get(), SoundSource.BLOCKS, volume, this.level.random.nextFloat() * 0.1F + 0.9F);
+            level.playSound(null, blockPos, ModSounds.TARGET_HIT.get(), SoundSource.BLOCKS, volume, level.getRandom().nextFloat() * 0.1F + 0.9F);
+        }
+    }
+
+    @Nullable
+    private static GameProfile normalizeOwner(@Nullable GameProfile owner) {
+        if (owner == null) {
+            return null;
+        }
+        UUID id = owner.id() == null ? Util.NIL_UUID : owner.id();
+        String name = owner.name() == null ? "" : owner.name();
+        return new GameProfile(id, name, owner.properties());
+    }
+
+    @Nullable
+    private static GameProfile readOwner(CompoundTag tag) {
+        String name = tag.getString(OWNER_NAME_TAG).or(() -> tag.getString("name")).orElse("");
+        Optional<UUID> id = tag.getString(OWNER_ID_TAG).or(() -> tag.getString("id")).flatMap(TargetBlockEntity::tryParseUuid);
+        if (name.isBlank() && id.isEmpty()) {
+            return null;
+        }
+        return new GameProfile(id.orElse(Util.NIL_UUID), name);
+    }
+
+    private static CompoundTag writeOwner(GameProfile owner) {
+        GameProfile normalized = normalizeOwner(owner);
+        CompoundTag tag = new CompoundTag();
+        if (normalized == null) {
+            return tag;
+        }
+        if (!Util.NIL_UUID.equals(normalized.id())) {
+            tag.putString(OWNER_ID_TAG, normalized.id().toString());
+        }
+        if (normalized.name() != null && !normalized.name().isBlank()) {
+            tag.putString(OWNER_NAME_TAG, normalized.name());
+        }
+        return tag;
+    }
+
+    private static Optional<UUID> tryParseUuid(String value) {
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
         }
     }
 }

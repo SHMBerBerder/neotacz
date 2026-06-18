@@ -7,7 +7,7 @@ import com.tacz.guns.util.LaserColorUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.client.gui.widget.ForgeSlider;
+import net.neoforged.neoforge.client.gui.widget.ExtendedSlider;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
@@ -83,7 +83,7 @@ public class HSVSliderGroup {
         return 0XFF0000;
     }
 
-    public static class LaserColorSlider extends ForgeSlider {
+    public static class LaserColorSlider extends ExtendedSlider {
         private final HSVSliderGroup parent;
 
         public LaserColorSlider(int x, int y, int width, int height, HSVSliderGroup parent, double current) {

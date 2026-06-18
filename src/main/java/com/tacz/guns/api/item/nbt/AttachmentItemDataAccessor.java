@@ -4,7 +4,7 @@ import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.item.IAttachment;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nonnull;
@@ -19,16 +19,16 @@ public interface AttachmentItemDataAccessor extends IAttachment {
 
     // 仅检查给定的 CompoundTag 是否具有配件 ID ，不校验其是否存在
     static boolean isAttachmentLike(CompoundTag tag) {
-        return tag.contains(ATTACHMENT_ID_TAG, Tag.TAG_STRING);
+        return ItemStackNbtHelper.contains(tag, ATTACHMENT_ID_TAG, Tag.TAG_STRING);
     }
 
     @Nonnull
-    static ResourceLocation getAttachmentIdFromTag(@Nullable CompoundTag nbt) {
+    static Identifier getAttachmentIdFromTag(@Nullable CompoundTag nbt) {
         if (nbt == null) {
             return DefaultAssets.EMPTY_ATTACHMENT_ID;
         }
         if (isAttachmentLike(nbt)) {
-            ResourceLocation attachmentId = ResourceLocation.tryParse(nbt.getString(ATTACHMENT_ID_TAG));
+            Identifier attachmentId = Identifier.tryParse(ItemStackNbtHelper.getString(nbt, ATTACHMENT_ID_TAG));
             return Objects.requireNonNullElse(attachmentId, DefaultAssets.EMPTY_ATTACHMENT_ID);
         }
         return DefaultAssets.EMPTY_ATTACHMENT_ID;
@@ -38,8 +38,8 @@ public interface AttachmentItemDataAccessor extends IAttachment {
         if (nbt == null) {
             return 0;
         }
-        if (nbt.contains(ZOOM_NUMBER_TAG, Tag.TAG_INT)) {
-            return nbt.getInt(ZOOM_NUMBER_TAG);
+        if (ItemStackNbtHelper.contains(nbt, ZOOM_NUMBER_TAG, Tag.TAG_INT)) {
+            return ItemStackNbtHelper.getInt(nbt, ZOOM_NUMBER_TAG);
         }
         return 0;
     }
@@ -50,69 +50,63 @@ public interface AttachmentItemDataAccessor extends IAttachment {
 
     @Override
     @Nonnull
-    default ResourceLocation getAttachmentId(ItemStack attachmentStack) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        return getAttachmentIdFromTag(nbt);
+    default Identifier getAttachmentId(ItemStack attachmentStack) {
+        return getAttachmentIdFromTag(ItemStackNbtHelper.getTag(attachmentStack));
     }
 
     @Override
-    default void setAttachmentId(ItemStack attachmentStack, @Nullable ResourceLocation attachmentId) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
+    default void setAttachmentId(ItemStack attachmentStack, @Nullable Identifier attachmentId) {
         if (attachmentId != null) {
-            nbt.putString(ATTACHMENT_ID_TAG, attachmentId.toString());
+            ItemStackNbtHelper.updateTag(attachmentStack, nbt -> nbt.putString(ATTACHMENT_ID_TAG, attachmentId.toString()));
         }
     }
 
     @Override
     @Nullable
-    default ResourceLocation getSkinId(ItemStack attachmentStack) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        if (nbt.contains(SKIN_ID_TAG, Tag.TAG_STRING)) {
-            return ResourceLocation.tryParse(nbt.getString(SKIN_ID_TAG));
+    default Identifier getSkinId(ItemStack attachmentStack) {
+        CompoundTag nbt = ItemStackNbtHelper.getTag(attachmentStack);
+        if (ItemStackNbtHelper.contains(nbt, SKIN_ID_TAG, Tag.TAG_STRING)) {
+            return Identifier.tryParse(ItemStackNbtHelper.getString(nbt, SKIN_ID_TAG));
         }
         return null;
     }
 
     @Override
-    default void setSkinId(ItemStack attachmentStack, @Nullable ResourceLocation skinId) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        if (skinId != null) {
-            nbt.putString(SKIN_ID_TAG, skinId.toString());
-        } else {
-            nbt.remove(SKIN_ID_TAG);
-        }
+    default void setSkinId(ItemStack attachmentStack, @Nullable Identifier skinId) {
+        ItemStackNbtHelper.updateTag(attachmentStack, nbt -> {
+            if (skinId != null) {
+                nbt.putString(SKIN_ID_TAG, skinId.toString());
+            } else {
+                nbt.remove(SKIN_ID_TAG);
+            }
+        });
     }
 
     @Override
     default int getZoomNumber(ItemStack attachmentStack) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        return getZoomNumberFromTag(nbt);
+        return getZoomNumberFromTag(ItemStackNbtHelper.getTag(attachmentStack));
     }
 
     @Override
     default void setZoomNumber(ItemStack attachmentStack, int zoomNumber) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        setZoomNumberToTag(nbt, zoomNumber);
+        ItemStackNbtHelper.updateTag(attachmentStack, nbt -> setZoomNumberToTag(nbt, zoomNumber));
     }
 
     @Override
     default boolean hasCustomLaserColor(ItemStack attachmentStack) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        return nbt.contains(LASER_COLOR_TAG, Tag.TAG_INT);
+        return ItemStackNbtHelper.contains(attachmentStack, LASER_COLOR_TAG, Tag.TAG_INT);
     }
 
     @Override
     default int getLaserColor(ItemStack attachmentStack) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
         if (!hasCustomLaserColor(attachmentStack)) {
             return 0xFF0000;
         }
-        return nbt.getInt(LASER_COLOR_TAG);
+        return ItemStackNbtHelper.getInt(ItemStackNbtHelper.getTag(attachmentStack), LASER_COLOR_TAG);
     }
 
     @Override
     default void setLaserColor(ItemStack attachmentStack, int color) {
-        CompoundTag nbt = attachmentStack.getOrCreateTag();
-        nbt.putInt(LASER_COLOR_TAG, color);
+        ItemStackNbtHelper.updateTag(attachmentStack, nbt -> nbt.putInt(LASER_COLOR_TAG, color));
     }
 }

@@ -12,7 +12,7 @@ import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import com.tacz.guns.resource.index.CommonGunIndex;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -38,20 +38,17 @@ public interface GunItemDataAccessor extends IGun {
 
     @Override
     default boolean useDummyAmmo(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        return nbt.contains(GUN_DUMMY_AMMO, Tag.TAG_INT);
+        return ItemStackNbtHelper.contains(gun, GUN_DUMMY_AMMO, Tag.TAG_INT);
     }
 
     @Override
     default int getDummyAmmoAmount(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        return Math.max(0, nbt.getInt(GUN_DUMMY_AMMO));
+        return Math.max(0, ItemStackNbtHelper.getInt(ItemStackNbtHelper.getTag(gun), GUN_DUMMY_AMMO));
     }
 
     @Override
     default void setDummyAmmoAmount(ItemStack gun, int amount) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        nbt.putInt(GUN_DUMMY_AMMO, Math.max(amount, 0));
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putInt(GUN_DUMMY_AMMO, Math.max(amount, 0)));
     }
 
     @Override
@@ -63,96 +60,90 @@ public interface GunItemDataAccessor extends IGun {
         if (hasMaxDummyAmmo(gun)) {
             maxDummyAmmo = getMaxDummyAmmoAmount(gun);
         }
-        CompoundTag nbt = gun.getOrCreateTag();
         amount = Math.min(getDummyAmmoAmount(gun) + amount, maxDummyAmmo);
-        nbt.putInt(GUN_DUMMY_AMMO, Math.max(amount, 0));
+        int finalAmount = amount;
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putInt(GUN_DUMMY_AMMO, Math.max(finalAmount, 0)));
     }
 
     @Override
     default boolean hasMaxDummyAmmo(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        return nbt.contains(GUN_MAX_DUMMY_AMMO, Tag.TAG_INT);
+        return ItemStackNbtHelper.contains(gun, GUN_MAX_DUMMY_AMMO, Tag.TAG_INT);
     }
 
     @Override
     default int getMaxDummyAmmoAmount(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        return Math.max(0, nbt.getInt(GUN_MAX_DUMMY_AMMO));
+        return Math.max(0, ItemStackNbtHelper.getInt(ItemStackNbtHelper.getTag(gun), GUN_MAX_DUMMY_AMMO));
     }
 
     @Override
     default void setMaxDummyAmmoAmount(ItemStack gun, int amount) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        nbt.putInt(GUN_MAX_DUMMY_AMMO, Math.max(amount, 0));
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putInt(GUN_MAX_DUMMY_AMMO, Math.max(amount, 0)));
     }
 
     @Override
     default boolean hasAttachmentLock(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_ATTACHMENT_LOCK, Tag.TAG_BYTE)) {
-            return nbt.getBoolean(GUN_ATTACHMENT_LOCK);
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_ATTACHMENT_LOCK, Tag.TAG_BYTE)) {
+            return ItemStackNbtHelper.getBoolean(nbt, GUN_ATTACHMENT_LOCK);
         }
         return false;
     }
 
     @Override
     default void setAttachmentLock(ItemStack gun, boolean lock) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        nbt.putBoolean(GUN_ATTACHMENT_LOCK, lock);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putBoolean(GUN_ATTACHMENT_LOCK, lock));
     }
 
     @Override
     @Nonnull
-    default ResourceLocation getGunId(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_ID_TAG, Tag.TAG_STRING)) {
-            ResourceLocation gunId = ResourceLocation.tryParse(nbt.getString(GUN_ID_TAG));
+    default Identifier getGunId(ItemStack gun) {
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_ID_TAG, Tag.TAG_STRING)) {
+            Identifier gunId = Identifier.tryParse(ItemStackNbtHelper.getString(nbt, GUN_ID_TAG));
             return Objects.requireNonNullElse(gunId, DefaultAssets.EMPTY_GUN_ID);
         }
         return DefaultAssets.EMPTY_GUN_ID;
     }
 
     @Override
-    default void setGunId(ItemStack gun, @Nullable ResourceLocation gunId) {
-        CompoundTag nbt = gun.getOrCreateTag();
+    default void setGunId(ItemStack gun, @Nullable Identifier gunId) {
         if (gunId != null) {
-            nbt.putString(GUN_ID_TAG, gunId.toString());
+            ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putString(GUN_ID_TAG, gunId.toString()));
         }
     }
 
     @Override
     @NotNull
-    default ResourceLocation getGunDisplayId(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_DISPLAY_ID_TAG, Tag.TAG_STRING)) {
-            ResourceLocation gunDisplayId = ResourceLocation.tryParse(nbt.getString(GUN_DISPLAY_ID_TAG));
+    default Identifier getGunDisplayId(ItemStack gun) {
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_DISPLAY_ID_TAG, Tag.TAG_STRING)) {
+            Identifier gunDisplayId = Identifier.tryParse(ItemStackNbtHelper.getString(nbt, GUN_DISPLAY_ID_TAG));
             return Objects.requireNonNullElse(gunDisplayId, DefaultAssets.DEFAULT_GUN_DISPLAY_ID);
         }
         return DefaultAssets.DEFAULT_GUN_DISPLAY_ID;
     }
 
     @Override
-    default void setGunDisplayId(ItemStack gun, ResourceLocation displayId) {
-        CompoundTag nbt = gun.getOrCreateTag();
+    default void setGunDisplayId(ItemStack gun, Identifier displayId) {
         if (displayId != null) {
-            nbt.putString(GUN_DISPLAY_ID_TAG, displayId.toString());
+            ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putString(GUN_DISPLAY_ID_TAG, displayId.toString()));
         }
     }
 
     @Override
     default int getLevel(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_EXP_TAG, Tag.TAG_INT)) {
-            return getLevel(nbt.getInt(GUN_EXP_TAG));
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_EXP_TAG, Tag.TAG_INT)) {
+            return getLevel(ItemStackNbtHelper.getInt(nbt, GUN_EXP_TAG));
         }
         return 0;
     }
 
     @Override
     default int getExp(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_EXP_TAG, Tag.TAG_INT)) {
-            return nbt.getInt(GUN_EXP_TAG);
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_EXP_TAG, Tag.TAG_INT)) {
+            return ItemStackNbtHelper.getInt(nbt, GUN_EXP_TAG);
         }
         return 0;
     }
@@ -181,36 +172,30 @@ public interface GunItemDataAccessor extends IGun {
 
     @Override
     default FireMode getFireMode(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_FIRE_MODE_TAG, Tag.TAG_STRING)) {
-            return FireMode.valueOf(nbt.getString(GUN_FIRE_MODE_TAG));
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_FIRE_MODE_TAG, Tag.TAG_STRING)) {
+            return FireMode.valueOf(ItemStackNbtHelper.getString(nbt, GUN_FIRE_MODE_TAG));
         }
         return FireMode.UNKNOWN;
     }
 
     @Override
     default void setFireMode(ItemStack gun, @Nullable FireMode fireMode) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (fireMode != null) {
-            nbt.putString(GUN_FIRE_MODE_TAG, fireMode.name());
-            return;
-        }
-        nbt.putString(GUN_FIRE_MODE_TAG, FireMode.UNKNOWN.name());
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putString(GUN_FIRE_MODE_TAG, fireMode != null ? fireMode.name() : FireMode.UNKNOWN.name()));
     }
 
     @Override
     default int getCurrentAmmoCount(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_CURRENT_AMMO_COUNT_TAG, Tag.TAG_INT)) {
-            return nbt.getInt(GUN_CURRENT_AMMO_COUNT_TAG);
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_CURRENT_AMMO_COUNT_TAG, Tag.TAG_INT)) {
+            return ItemStackNbtHelper.getInt(nbt, GUN_CURRENT_AMMO_COUNT_TAG);
         }
         return 0;
     }
 
     @Override
     default void setCurrentAmmoCount(ItemStack gun, int ammoCount) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        nbt.putInt(GUN_CURRENT_AMMO_COUNT_TAG, Math.max(ammoCount, 0));
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putInt(GUN_CURRENT_AMMO_COUNT_TAG, Math.max(ammoCount, 0)));
     }
 
     @Override
@@ -227,12 +212,16 @@ public interface GunItemDataAccessor extends IGun {
         if (!allowAttachmentType(gun, type)) {
             return null;
         }
-        CompoundTag nbt = gun.getOrCreateTag();
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
         String key = GUN_ATTACHMENT_BASE + type.name();
-        if (nbt.contains(key, Tag.TAG_COMPOUND)) {
-            CompoundTag allItemStackTag = nbt.getCompound(key);
-            if (allItemStackTag.contains("tag", Tag.TAG_COMPOUND)) {
-                return allItemStackTag.getCompound("tag");
+        if (ItemStackNbtHelper.contains(nbt, key, Tag.TAG_COMPOUND)) {
+            CompoundTag allItemStackTag = ItemStackNbtHelper.getCompoundOrEmpty(nbt, key);
+            ItemStack attachment = ItemStackNbtHelper.parseLegacyStackSubset(allItemStackTag);
+            if (!attachment.isEmpty()) {
+                return ItemStackNbtHelper.getTag(attachment);
+            }
+            if (ItemStackNbtHelper.contains(allItemStackTag, "tag", Tag.TAG_COMPOUND)) {
+                return ItemStackNbtHelper.getCompoundOrEmpty(allItemStackTag, "tag");
             }
         }
         return null;
@@ -261,17 +250,17 @@ public interface GunItemDataAccessor extends IGun {
         if (!allowAttachmentType(gun, type)) {
             return ItemStack.EMPTY;
         }
-        CompoundTag nbt = gun.getOrCreateTag();
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
         String key = GUN_ATTACHMENT_BASE + type.name();
-        if (nbt.contains(key, Tag.TAG_COMPOUND)) {
-            return ItemStack.of(nbt.getCompound(key));
+        if (ItemStackNbtHelper.contains(nbt, key, Tag.TAG_COMPOUND)) {
+            return ItemStackNbtHelper.parseLegacyStackSubset(ItemStackNbtHelper.getCompoundOrEmpty(nbt, key));
         }
         return ItemStack.EMPTY;
     }
 
     @Override
     @NotNull
-    default ResourceLocation getBuiltInAttachmentId(ItemStack gun, AttachmentType type) {
+    default Identifier getBuiltInAttachmentId(ItemStack gun, AttachmentType type) {
         IGun iGun = IGun.getIGunOrNull(gun);
         if (iGun == null) {
             return DefaultAssets.EMPTY_ATTACHMENT_ID;
@@ -288,7 +277,7 @@ public interface GunItemDataAccessor extends IGun {
 
     @Override
     @Nonnull
-    default ResourceLocation getAttachmentId(ItemStack gun, AttachmentType type) {
+    default Identifier getAttachmentId(ItemStack gun, AttachmentType type) {
         CompoundTag attachmentTag = this.getAttachmentTag(gun, type);
         if (attachmentTag != null) {
             return AttachmentItemDataAccessor.getAttachmentIdFromTag(attachmentTag);
@@ -305,11 +294,9 @@ public interface GunItemDataAccessor extends IGun {
         if (iAttachment == null) {
             return;
         }
-        CompoundTag nbt = gun.getOrCreateTag();
         String key = GUN_ATTACHMENT_BASE + iAttachment.getType(attachment).name();
-        CompoundTag attachmentTag = new CompoundTag();
-        attachment.save(attachmentTag);
-        nbt.put(key, attachmentTag);
+        CompoundTag attachmentTag = ItemStackNbtHelper.saveLegacyStackSubset(attachment);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.put(key, attachmentTag));
     }
 
     @Override
@@ -317,17 +304,15 @@ public interface GunItemDataAccessor extends IGun {
         if (!allowAttachmentType(gun, type)) {
             return;
         }
-        CompoundTag nbt = gun.getOrCreateTag();
         String key = GUN_ATTACHMENT_BASE + type.name();
-        CompoundTag attachmentTag = new CompoundTag();
-        ItemStack.EMPTY.save(attachmentTag);
-        nbt.put(key, attachmentTag);
+        CompoundTag attachmentTag = ItemStackNbtHelper.saveLegacyStackSubset(ItemStack.EMPTY);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.put(key, attachmentTag));
     }
 
     @Override
     default float getAimingZoom(ItemStack gunItem) {
         float zoom = 1;
-        ResourceLocation scopeId = this.getAttachmentId(gunItem, AttachmentType.SCOPE);
+        Identifier scopeId = this.getAttachmentId(gunItem, AttachmentType.SCOPE);
         boolean builtin = false;
         if (scopeId.equals(DefaultAssets.EMPTY_ATTACHMENT_ID)) {
             scopeId = getBuiltInAttachmentId(gunItem, AttachmentType.SCOPE);
@@ -348,38 +333,34 @@ public interface GunItemDataAccessor extends IGun {
 
     @Override
     default boolean hasBulletInBarrel(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        if (nbt.contains(GUN_HAS_BULLET_IN_BARREL, Tag.TAG_BYTE)) {
-            return nbt.getBoolean(GUN_HAS_BULLET_IN_BARREL);
+        CompoundTag nbt = ItemStackNbtHelper.getTag(gun);
+        if (ItemStackNbtHelper.contains(nbt, GUN_HAS_BULLET_IN_BARREL, Tag.TAG_BYTE)) {
+            return ItemStackNbtHelper.getBoolean(nbt, GUN_HAS_BULLET_IN_BARREL);
         }
         return false;
     }
 
     @Override
     default void setBulletInBarrel(ItemStack gun, boolean bulletInBarrel) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        nbt.putBoolean(GUN_HAS_BULLET_IN_BARREL, bulletInBarrel);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putBoolean(GUN_HAS_BULLET_IN_BARREL, bulletInBarrel));
     }
 
     @Override
     default boolean hasCustomLaserColor(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        return nbt.contains(LASER_COLOR_TAG, Tag.TAG_INT);
+        return ItemStackNbtHelper.contains(gun, LASER_COLOR_TAG, Tag.TAG_INT);
     }
 
     @Override
     default int getLaserColor(ItemStack gun) {
-        CompoundTag nbt = gun.getOrCreateTag();
         if (!hasCustomLaserColor(gun)) {
             return 0xFF0000;
         }
-        return nbt.getInt(LASER_COLOR_TAG);
+        return ItemStackNbtHelper.getInt(ItemStackNbtHelper.getTag(gun), LASER_COLOR_TAG);
     }
 
     @Override
     default void setLaserColor(ItemStack gun, int color) {
-        CompoundTag nbt = gun.getOrCreateTag();
-        nbt.putInt(LASER_COLOR_TAG, color);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putInt(LASER_COLOR_TAG, color));
     }
 
     /**
@@ -387,28 +368,30 @@ public interface GunItemDataAccessor extends IGun {
      */
     @Override
     default boolean hasHeatData(ItemStack gun) {
-        return gun.getOrCreateTag().contains(GUN_OVERHEAT_TAG, Tag.TAG_FLOAT);
+        return ItemStackNbtHelper.contains(gun, GUN_OVERHEAT_TAG, Tag.TAG_FLOAT);
     }
 
     @Override
     default boolean isOverheatLocked(ItemStack gun) {
-        return gun.getOrCreateTag().getBoolean(GUN_OVERHEAT_LOCK_TAG);
+        return ItemStackNbtHelper.getBoolean(ItemStackNbtHelper.getTag(gun), GUN_OVERHEAT_LOCK_TAG);
     }
 
     @Override
     default void setOverheatLocked(ItemStack gun, boolean locked) {
-        gun.getOrCreateTag().putBoolean(GUN_OVERHEAT_LOCK_TAG, locked);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putBoolean(GUN_OVERHEAT_LOCK_TAG, locked));
     }
 
     @Override
     default float getHeatAmount(ItemStack gun) {
-        if(hasHeatData(gun)) return gun.getOrCreateTag().getFloat(GUN_OVERHEAT_TAG);
+        if (hasHeatData(gun)) {
+            return ItemStackNbtHelper.getFloat(ItemStackNbtHelper.getTag(gun), GUN_OVERHEAT_TAG);
+        }
         return 0f;
     }
 
     @Override
     default void setHeatAmount(ItemStack gun, float amount) {
-        gun.getOrCreateTag().putFloat(GUN_OVERHEAT_TAG, amount >= 0 ? amount : 0f);
+        ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putFloat(GUN_OVERHEAT_TAG, amount >= 0 ? amount : 0f));
     }
 
     @Override
