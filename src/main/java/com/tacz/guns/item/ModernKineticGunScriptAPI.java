@@ -7,12 +7,20 @@ import com.tacz.guns.api.GunProperties;
 import com.tacz.guns.api.GunProperty;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.entity.IGunOperator;
+import com.tacz.guns.api.event.common.GunAmmoConsumeEvent;
+import com.tacz.guns.api.event.common.GunAmmoQueryEvent;
+import com.tacz.guns.api.event.common.GunAimStateEvent;
 import com.tacz.guns.api.event.common.GunFireEvent;
+import com.tacz.guns.api.event.common.GunShotContextEvent;
 import com.tacz.guns.api.item.IAmmo;
 import com.tacz.guns.api.item.IAmmoBox;
+import com.tacz.guns.api.item.ammo.GunAmmoProviderRegistry;
+import com.tacz.guns.api.item.ammo.GunAmmoRequest;
+import com.tacz.guns.api.item.ammo.GunAmmoTransaction;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.api.item.gun.FireMode;
+import com.tacz.guns.api.item.runtime.GunRuntimeContext;
 import com.tacz.guns.api.util.LuaEntityAccessor;
 import com.tacz.guns.api.util.LuaNbtAccessor;
 import com.tacz.guns.client.animation.statemachine.GunAnimationStateContext;
@@ -182,10 +190,22 @@ public class ModernKineticGunScriptAPI {
                 float yaw = yawSupplier != null ? yawSupplier.get() : shooter.getYRot();
                 // 生成子弹
                 Level world = shooter.level();
-                Identifier ammoId = gunData.getAmmoId();
+                var slots = abstractGunItem.getAmmoSlots(itemStack, gunData.getAmmoId());
+                var activeSlot = slots.activeSlot();
+                GunRuntimeContext runtimeContext = new GunRuntimeContext(
+                        GunRuntimeContext.nextShotId(),
+                        gunId,
+                        activeSlot.ammoId(),
+                        activeSlot.slotId(),
+                        abstractGunItem.getRuntimeItemId(itemStack)
+                );
+                GunShotContextEvent contextEvent = new GunShotContextEvent(shooter, itemStack, runtimeContext);
+                NeoForge.EVENT_BUS.post(contextEvent);
+                runtimeContext = contextEvent.getContext();
+                Identifier ammoId = runtimeContext.ammoId();
                 for (int i = 0; i < bulletAmount; i++) {
                     boolean isTracer = bulletData.hasTracerAmmo() && gunOperator.nextBulletIsTracer(bulletData.getTracerCountInterval());
-                    EntityKineticBullet bullet = new EntityKineticBullet(world, shooter, itemStack, ammoId, gunId,
+                    EntityKineticBullet bullet = new EntityKineticBullet(world, shooter, itemStack, runtimeContext,
                             gunDisplayId, isTracer, gunData, bulletData);
                     bullet.applyShotgunDamageSpread(bulletAmount);
                     bullet.setShotDamageMultiplier(shotDamageMultiplier);
@@ -237,8 +257,8 @@ public class ModernKineticGunScriptAPI {
                 .orElse(null);
         // 膛内是否有子弹
         boolean hasAmmoInBarrel = abstractGunItem.hasBulletInBarrel(itemStack) && boltType != Bolt.OPEN_BOLT;
-        // 背包内是否还有子弹 (创造模式是否消耗背包备弹)
-        boolean hasInventoryAmmo = abstractGunItem.hasInventoryAmmo(shooter, itemStack, isReloadingNeedConsumeAmmo());
+        // 背包内或外部 provider 是否还有子弹 (创造模式是否消耗背包备弹)
+        boolean hasInventoryAmmo = hasAmmoAvailableForActiveSlot(1);
         // 判断没有子弹的条件 (背包直读且包内没子弹 / 非背包直读且弹匣子弹数 < 1)
         boolean noAmmo = useInventoryAmmo() && !hasInventoryAmmo ||
                 !useInventoryAmmo() && abstractGunItem.getCurrentAmmoCount(itemStack) < 1;
@@ -381,6 +401,12 @@ public class ModernKineticGunScriptAPI {
      */
     public float getAimingProgress() {
         return dataHolder.aimingProgress;
+    }
+
+    public GunAimStateEvent getAimStateEvent(boolean retainAimAfterCycle, boolean retainScopeAfterShot) {
+        GunAimStateEvent event = new GunAimStateEvent(shooter, itemStack, retainAimAfterCycle, retainScopeAfterShot);
+        NeoForge.EVENT_BUS.post(event);
+        return event;
     }
 
     // 蓄力相关方法
@@ -544,13 +570,24 @@ public class ModernKineticGunScriptAPI {
         if (useInventoryAmmo() && !isReloadingNeedConsumeAmmo()) {
             return neededAmount;
         }
+        GunAmmoRequest request = activeAmmoRequest(neededAmount, GunAmmoRequest.Kind.CONSUME);
+        GunAmmoTransaction transaction = GunAmmoProviderRegistry.consume(request);
+        if (transaction.handled()) {
+            GunAmmoConsumeEvent event = new GunAmmoConsumeEvent(request, transaction.amount());
+            NeoForge.EVENT_BUS.post(event);
+            return event.getConsumedAmount();
+        }
+        int consumedAmount;
         if (abstractGunItem.useDummyAmmo(itemStack)) {
-            return abstractGunItem.findAndExtractDummyAmmo(itemStack, neededAmount);
+            consumedAmount = abstractGunItem.findAndExtractDummyAmmo(itemStack, neededAmount);
         } else {
-            return InventoryHandlerUtils.of(shooter)
+            consumedAmount = InventoryHandlerUtils.of(shooter)
                     .map(cap -> abstractGunItem.findAndExtractInventoryAmmo(cap, itemStack, neededAmount))
                     .orElse(0);
         }
+        GunAmmoConsumeEvent event = new GunAmmoConsumeEvent(request, consumedAmount);
+        NeoForge.EVENT_BUS.post(event);
+        return event.getConsumedAmount();
     }
 
     /**
@@ -560,6 +597,9 @@ public class ModernKineticGunScriptAPI {
      */
     public boolean hasAmmoToConsume(){
         if (!isReloadingNeedConsumeAmmo()) {
+            return true;
+        }
+        if (hasAmmoAvailableForActiveSlot(1)) {
             return true;
         }
         if (abstractGunItem.useDummyAmmo(itemStack)) {
@@ -578,6 +618,35 @@ public class ModernKineticGunScriptAPI {
             }
             return false;
         }).orElse(false);
+    }
+
+    private boolean hasAmmoAvailableForActiveSlot(int neededAmount) {
+        if (!isReloadingNeedConsumeAmmo()) {
+            return true;
+        }
+        GunAmmoRequest request = activeAmmoRequest(neededAmount, GunAmmoRequest.Kind.QUERY);
+        GunAmmoTransaction transaction = GunAmmoProviderRegistry.query(request);
+        if (!transaction.handled()) {
+            return false;
+        }
+        GunAmmoQueryEvent event = new GunAmmoQueryEvent(request, transaction.amount());
+        NeoForge.EVENT_BUS.post(event);
+        return event.getAvailableAmount() >= Math.max(neededAmount, 1);
+    }
+
+    private GunAmmoRequest activeAmmoRequest(int amount, GunAmmoRequest.Kind kind) {
+        Identifier fallbackAmmoId = gunIndex.getGunData().getAmmoId();
+        var slots = abstractGunItem.getAmmoSlots(itemStack, fallbackAmmoId);
+        var activeSlot = slots.activeSlot();
+        return new GunAmmoRequest(
+                shooter,
+                itemStack,
+                activeSlot.slotId(),
+                activeSlot.ammoId(),
+                activeSlot.ammoPoolId(),
+                amount,
+                kind
+        );
     }
 
     /**

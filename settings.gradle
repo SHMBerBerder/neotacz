@@ -9,3 +9,15 @@ plugins {
 }
 
 rootProject.name = 'tacz'
+
+def simpleBedrockModelBuild = [
+        file('../simplebedrockmodel'),
+        file('../FPSMatch/porting/simplebedrockmodel')
+].find { it.exists() }
+if (simpleBedrockModelBuild != null) {
+    includeBuild(simpleBedrockModelBuild) {
+        dependencySubstitution {
+            substitute module('com.github.mcmodderanchor:simplebedrockmodel') using project(':')
+        }
+    }
+}

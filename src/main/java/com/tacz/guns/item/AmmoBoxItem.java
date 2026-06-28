@@ -3,8 +3,10 @@ package com.tacz.guns.item;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.TimelessAPI;
+import com.tacz.guns.api.event.common.GunAmmoSupplyEvent;
 import com.tacz.guns.api.item.IAmmo;
 import com.tacz.guns.api.item.IAmmoBox;
+import com.tacz.guns.api.item.ammo.GunAmmoRequest;
 import com.tacz.guns.api.item.builder.AmmoItemBuilder;
 import com.tacz.guns.api.item.nbt.AmmoBoxItemDataAccessor;
 import com.tacz.guns.config.sync.SyncConfig;
@@ -28,6 +30,7 @@ import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.item.*;
 import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.common.NeoForge;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -122,6 +125,23 @@ public class AmmoBoxItem extends Item implements AmmoBoxItemDataAccessor {
                 }
                 return TimelessAPI.getCommonAmmoIndex(boxAmmoId).map(index -> {
                     int takeCount = Math.min(index.getStackSize(), boxAmmoCount);
+                    GunAmmoRequest request = new GunAmmoRequest(
+                            player,
+                            ItemStack.EMPTY,
+                            "main",
+                            boxAmmoId,
+                            boxAmmoId.toString(),
+                            takeCount,
+                            GunAmmoRequest.Kind.SUPPLY
+                    );
+                    GunAmmoSupplyEvent supplyEvent = new GunAmmoSupplyEvent(player, ammoBox, GunAmmoSupplyEvent.SourceType.AMMO_BOX, request, takeCount);
+                    if (NeoForge.EVENT_BUS.post(supplyEvent).isCanceled()) {
+                        return true;
+                    }
+                    takeCount = Mth.clamp(supplyEvent.getSuppliedAmount(), 0, takeCount);
+                    if (takeCount <= 0) {
+                        return false;
+                    }
                     ItemStack takeAmmo = AmmoItemBuilder.create().setId(boxAmmoId).setCount(takeCount).build();
                     ItemStack remainingAmmo = slot.safeInsert(takeAmmo);
                     int insertedCount = takeCount - remainingAmmo.getCount();

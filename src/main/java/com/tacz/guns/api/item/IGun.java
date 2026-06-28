@@ -2,15 +2,19 @@ package com.tacz.guns.api.item;
 
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.GunProperty;
+import com.tacz.guns.api.event.common.GunAmmoSlotChangeEvent;
+import com.tacz.guns.api.item.ammo.GunAmmoSlot;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.api.item.gun.FireMode;
+import com.tacz.guns.api.item.runtime.GunRuntimeDataAccessor;
 import com.tacz.guns.entity.shooter.ShooterDataHolder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.common.NeoForge;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
@@ -20,7 +24,7 @@ import javax.annotation.Nullable;
  * 这里不包含枪械的逻辑，只包含枪械的各种 nbt 访问。<br>
  * 你可以在 {@link AbstractGunItem} 看到枪械逻辑
  */
-public interface IGun {
+public interface IGun extends GunRuntimeDataAccessor {
     /**
      * @return 如果物品类型为 IGun 则返回显式转换后的实例，否则返回 null。
      */
@@ -220,6 +224,27 @@ public interface IGun {
      * 设置当前枪械弹药数
      */
     void setCurrentAmmoCount(ItemStack gun, int ammoCount);
+
+    default boolean changeActiveAmmoSlot(LivingEntity entity, ItemStack gun, Identifier fallbackAmmoId, String slotId) {
+        var currentSlots = getAmmoSlots(gun, fallbackAmmoId);
+        GunAmmoSlot oldSlot = currentSlots.activeSlot();
+        if (oldSlot.slotId().equals(slotId)) {
+            return true;
+        }
+        GunAmmoSlot newSlot = currentSlots.slots().stream()
+                .filter(slot -> slot.slotId().equals(slotId))
+                .findFirst()
+                .orElse(null);
+        if (newSlot == null) {
+            return false;
+        }
+        GunAmmoSlotChangeEvent event = new GunAmmoSlotChangeEvent(entity, gun, oldSlot, newSlot);
+        if (NeoForge.EVENT_BUS.post(event).isCanceled()) {
+            return false;
+        }
+        setAmmoSlots(gun, currentSlots.withActiveSlot(slotId));
+        return true;
+    }
 
     /**
      * 减少一个当前枪械弹药数

@@ -198,6 +198,38 @@ public interface GunItemDataAccessor extends IGun {
         ItemStackNbtHelper.updateTag(gun, nbt -> nbt.putInt(GUN_CURRENT_AMMO_COUNT_TAG, Math.max(ammoCount, 0)));
     }
 
+    default boolean setGunIdIfAuthorized(ItemStack gun, @Nullable Identifier gunId, String requester) {
+        if (!canMutateRuntimeField(gun, GUN_ID_TAG, requester)) {
+            return false;
+        }
+        setGunId(gun, gunId);
+        return true;
+    }
+
+    default boolean setGunDisplayIdIfAuthorized(ItemStack gun, @Nullable Identifier displayId, String requester) {
+        if (!canMutateRuntimeField(gun, GUN_DISPLAY_ID_TAG, requester)) {
+            return false;
+        }
+        setGunDisplayId(gun, displayId);
+        return true;
+    }
+
+    default boolean setFireModeIfAuthorized(ItemStack gun, @Nullable FireMode fireMode, String requester) {
+        if (!canMutateRuntimeField(gun, GUN_FIRE_MODE_TAG, requester)) {
+            return false;
+        }
+        setFireMode(gun, fireMode);
+        return true;
+    }
+
+    default boolean setCurrentAmmoCountIfAuthorized(ItemStack gun, int ammoCount, String requester) {
+        if (!canMutateRuntimeField(gun, GUN_CURRENT_AMMO_COUNT_TAG, requester)) {
+            return false;
+        }
+        setCurrentAmmoCount(gun, ammoCount);
+        return true;
+    }
+
     @Override
     default void reduceCurrentAmmoCount(ItemStack gun) {
         // 只在不使用背包直读的情况下减少 AmmoCount

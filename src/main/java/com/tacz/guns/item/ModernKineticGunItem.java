@@ -6,11 +6,14 @@ import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.GunProperties;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.entity.ReloadState;
+import com.tacz.guns.api.event.common.GunCycleEvent;
+import com.tacz.guns.api.event.common.GunPropertyModifyEvent;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.api.item.gun.FireMode;
 import com.tacz.guns.api.item.nbt.GunItemDataAccessor;
+import com.tacz.guns.api.item.runtime.GunRuntimeContext;
 import com.tacz.guns.command.sub.DebugCommand;
 import com.tacz.guns.debug.GunMeleeDebug;
 import com.tacz.guns.entity.EntityKineticBullet;
@@ -34,6 +37,7 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.neoforged.neoforge.common.NeoForge;
 import org.apache.logging.log4j.MarkerManager;
 import org.joml.Vector2d;
 import org.luaj.vm2.*;
@@ -74,6 +78,9 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
         if (gunIndex == null) {
             return false;
         }
+        GunCycleEvent event = new GunCycleEvent(shooter, gunItem, GunCycleEvent.Phase.START,
+                (long) (gunIndex.getGunData().getBoltActionTime() * 1000));
+        NeoForge.EVENT_BUS.post(event);
         return Optional.ofNullable(gunIndex.getScript())
                 .map(script -> checkFunction(script.get("start_bolt")))
                 .map(func -> func.call(CoerceJavaToLua.coerce(api)).checkboolean())
@@ -266,6 +273,17 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
 
     public <T> T modifyProperty(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter,
                                 String luaMethodName, String id, Class<T> type, T original) {
+        Identifier fallbackAmmoId = Optional.ofNullable(TimelessAPI.getCommonGunIndex(this.getGunId(gunItem)).orElse(null))
+                .map(index -> index.getGunData().getAmmoId())
+                .orElse(DefaultAssets.EMPTY_AMMO_ID);
+        return modifyProperty(dataHolder, gunItem, shooter, luaMethodName, id, type, original,
+                GunRuntimeContext.none(this.getGunId(gunItem), fallbackAmmoId),
+                GunPropertyModifyEvent.Stage.SHOOT);
+    }
+
+    public <T> T modifyProperty(ShooterDataHolder dataHolder, ItemStack gunItem, LivingEntity shooter,
+                                String luaMethodName, String id, Class<T> type, T original,
+                                GunRuntimeContext context, GunPropertyModifyEvent.Stage stage) {
         ModernKineticGunScriptAPI api = new ModernKineticGunScriptAPI();
         api.setItemStack(gunItem);
         api.setShooter(shooter);
@@ -279,11 +297,22 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
         var afterDefaultModification = defaultPropertyModification.modify(gunItem, shooter, gunIndex, id, original);
 
         try {
-            return Optional.ofNullable(gunIndex.getScript())
+            T modified = Optional.ofNullable(gunIndex.getScript())
                     .map(script -> checkFunction(script.get(luaMethodName)))
                     .map(func -> func.call(CoerceJavaToLua.coerce(api), LuaValue.valueOf(id), CoerceJavaToLua.coerce(afterDefaultModification)))
                     .map(luaValue -> type.cast(CoerceLuaToJava.coerce(luaValue, type)))
                     .orElse(afterDefaultModification);
+            GunPropertyModifyEvent<T> event = new GunPropertyModifyEvent<>(
+                    shooter,
+                    gunItem,
+                    context == null ? GunRuntimeContext.none(this.getGunId(gunItem), gunIndex.getGunData().getAmmoId()) : context,
+                    id,
+                    type,
+                    stage == null ? GunPropertyModifyEvent.Stage.SHOOT : stage,
+                    modified
+            );
+            NeoForge.EVENT_BUS.post(event);
+            return event.getValue();
         } catch (Exception exception) {
             GunMod.LOGGER.warn(MarkerManager.getMarker("Gun Script"), "Failed to modify gun property {}", id, exception);
             return afterDefaultModification;
@@ -343,6 +372,9 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
         long boltActionTime = (long) (gunData.getBoltActionTime() * 1000);
         float rawBoltFeedTime = gunData.getBoltFeedTime();
         long boltFeedTime = rawBoltFeedTime == -1 ? boltActionTime : (long) (gunData.getBoltFeedTime() * 1000);
+        GunCycleEvent feedEvent = new GunCycleEvent(api.getShooter(), api.getItemStack(), GunCycleEvent.Phase.FEED, boltFeedTime);
+        NeoForge.EVENT_BUS.post(feedEvent);
+        boltFeedTime = feedEvent.getDurationMs();
         if (api.getBoltTime() < boltFeedTime) {
             return true;
         }
@@ -356,6 +388,9 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
                 api.setAmmoInBarrel(true);
             }
         }
+        GunCycleEvent finishEvent = new GunCycleEvent(api.getShooter(), api.getItemStack(), GunCycleEvent.Phase.FINISH, boltActionTime);
+        NeoForge.EVENT_BUS.post(finishEvent);
+        boltActionTime = finishEvent.getDurationMs();
         return api.getBoltTime() < boltActionTime;
     }
 

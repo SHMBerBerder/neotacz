@@ -37,8 +37,7 @@ import java.util.UUID;
 @EventBusSubscriber(value = Dist.CLIENT)
 public final class ScopeDebugAutoTest {
     private static final boolean ENABLED = Boolean.getBoolean("tacz.debug.scope.autotest")
-            && Boolean.getBoolean("tacz.debug.scopeRender")
-            && Boolean.getBoolean("mcagent.testMode");
+            && Boolean.getBoolean("tacz.debug.scopeRender");
     private static final Identifier M4A1 = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "m4a1");
     private static final Identifier AK47 = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "ak47");
     private static final Identifier SCOPE_STANDARD_8X = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "scope_standard_8x");

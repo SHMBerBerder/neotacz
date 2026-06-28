@@ -36,8 +36,7 @@ import java.util.UUID;
 @EventBusSubscriber(value = Dist.CLIENT)
 public final class TracerDebugAutoTest {
     private static final boolean ENABLED = Boolean.getBoolean("tacz.debug.tracer.autotest")
-            && Boolean.getBoolean("tacz.debug.tracer")
-            && Boolean.getBoolean("mcagent.testMode");
+            && Boolean.getBoolean("tacz.debug.tracer");
     private static final boolean NEAR_ONLY = Boolean.getBoolean("tacz.debug.tracer.nearOnly");
     private static final Identifier TEST_GUN_ID = Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "m4a1");
     private static final float TEST_PITCH = -8.0F;

@@ -1,5 +1,7 @@
 package com.tacz.guns.api.event.common;
 
+import com.tacz.guns.entity.EntityKineticBullet;
+import com.tacz.guns.api.item.runtime.GunHitContext;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -29,22 +31,34 @@ public class EntityHurtByGunEvent extends Event implements KubeJSGunEventPoster<
     protected boolean isHeadShot;
     protected float headshotMultiplier;
     protected final LogicalSide logicalSide;
+    protected final GunHitContext hitContext;
 
     @ApiStatus.Internal
     protected EntityHurtByGunEvent(Entity bullet, @Nullable Entity hurtEntity, @Nullable LivingEntity attacker,
                                    Identifier gunId, Identifier gunDisplayId,
                                    float baseAmount, @Nullable Pair<DamageSource, DamageSource> sources, boolean isHeadShot,
                                    float headshotMultiplier, LogicalSide logicalSide) {
+        this(bullet, hurtEntity, attacker, gunId, gunDisplayId, baseAmount, sources, isHeadShot,
+                headshotMultiplier, logicalSide, GunHitContext.unknown());
+    }
+
+    @ApiStatus.Internal
+    protected EntityHurtByGunEvent(Entity bullet, @Nullable Entity hurtEntity, @Nullable LivingEntity attacker,
+                                   Identifier gunId, Identifier gunDisplayId,
+                                   float baseAmount, @Nullable Pair<DamageSource, DamageSource> sources, boolean isHeadShot,
+                                   float headshotMultiplier, LogicalSide logicalSide, GunHitContext hitContext) {
         this.bullet = bullet;
         this.hurtEntity = hurtEntity;
         this.attacker = attacker;
         this.gunId = gunId;
+        this.gunDisplayId = gunDisplayId;
         this.baseAmount = baseAmount;
         this.nonApPartDamageSource = Optional.ofNullable(sources).map(Pair::getLeft).orElse(null);
         this.apPartDamageSource = Optional.ofNullable(sources).map(Pair::getRight).orElse(null);
         this.isHeadShot = isHeadShot;
         this.headshotMultiplier = headshotMultiplier;
         this.logicalSide = logicalSide;
+        this.hitContext = hitContext == null ? GunHitContext.unknown() : hitContext;
     }
 
     /**
@@ -57,6 +71,17 @@ public class EntityHurtByGunEvent extends Event implements KubeJSGunEventPoster<
                    float amount, @Nullable Pair<DamageSource, DamageSource> sources,
                    boolean isHeadShot, float headshotMultiplier, LogicalSide logicalSide) {
             super(bullet, hurtEntity, attacker, gunId, gunDisplayId, amount, sources, isHeadShot, headshotMultiplier, logicalSide);
+            this.headshotMultiplier = headshotMultiplier;
+            postEventToKubeJS(this);
+        }
+
+        @ApiStatus.Internal
+        public Pre(Entity bullet, @Nullable Entity hurtEntity, @Nullable LivingEntity attacker,
+                   Identifier gunId, Identifier gunDisplayId,
+                   float amount, @Nullable Pair<DamageSource, DamageSource> sources,
+                   boolean isHeadShot, float headshotMultiplier, LogicalSide logicalSide, GunHitContext hitContext) {
+            super(bullet, hurtEntity, attacker, gunId, gunDisplayId, amount, sources, isHeadShot,
+                    headshotMultiplier, logicalSide, hitContext);
             this.headshotMultiplier = headshotMultiplier;
             postEventToKubeJS(this);
         }
@@ -110,6 +135,16 @@ public class EntityHurtByGunEvent extends Event implements KubeJSGunEventPoster<
             super(bullet, hurtEntity, attacker, gunId, gunDisplayId, amount, sources, isHeadShot, headshotMultiplier, logicalSide);
             postEventToKubeJS(this);
         }
+
+        @ApiStatus.Internal
+        public Post(Entity bullet, @Nullable Entity hurtEntity, @Nullable LivingEntity attacker,
+                    Identifier gunId, Identifier gunDisplayId,
+                    float amount, @Nullable Pair<DamageSource, DamageSource> sources,
+                    boolean isHeadShot, float headshotMultiplier, LogicalSide logicalSide, GunHitContext hitContext) {
+            super(bullet, hurtEntity, attacker, gunId, gunDisplayId, amount, sources, isHeadShot,
+                    headshotMultiplier, logicalSide, hitContext);
+            postEventToKubeJS(this);
+        }
     }
 
     public Entity getBullet() {
@@ -160,5 +195,26 @@ public class EntityHurtByGunEvent extends Event implements KubeJSGunEventPoster<
 
     public LogicalSide getLogicalSide() {
         return logicalSide;
+    }
+
+    public GunHitContext getHitContext() {
+        return hitContext;
+    }
+
+    @Nullable
+    public Identifier getAmmoId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getAmmoId() : null;
+    }
+
+    public String getAmmoSlotId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getAmmoSlotId() : "";
+    }
+
+    public String getRuntimeItemId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getRuntimeItemId() : "";
+    }
+
+    public long getShotId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getShotId() : 0L;
     }
 }

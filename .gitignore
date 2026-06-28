@@ -20,7 +20,7 @@ build
 # other
 eclipse
 run
-test
+/test/
 logs
 .luarc.json
 .DS_Store

@@ -59,12 +59,6 @@ def taczDebugScopePitch = providers.gradleProperty('tacz_debug_scope_pitch')
 def taczDebugScopeMaxSamples = providers.gradleProperty('tacz_debug_scope_max_samples')
         .orElse("65536")
         .get()
-def taczMcAgentQuickplayWorld = providers.gradleProperty('tacz_mcagent_quickplay_world')
-        .orElse("")
-        .get()
-def taczMcAgentQuickplayServer = providers.gradleProperty('tacz_mcagent_quickplay_server')
-        .orElse("")
-        .get()
 
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(25)
@@ -73,6 +67,11 @@ java {
 
 sourceSets.main.resources {
     srcDir 'src/generated/resources'
+}
+
+sourceSets.test {
+    compileClasspath += sourceSets.main.compileClasspath
+    runtimeClasspath += sourceSets.main.runtimeClasspath
 }
 
 sourceSets.main.java {
@@ -189,66 +188,6 @@ neoForge {
             gameDirectory = project.file('run/client_smoke')
             programArguments.addAll '--username', 'client_smoke'
             systemProperty 'tacz.clientSmoke', 'true'
-        }
-
-        clientMcAgent {
-            client()
-            def mcAgentGameDir = project.file('run/client_mcagent')
-            def mcAgentJarFile = project.file(providers.gradleProperty('mcAgentJar')
-                    .orElse(providers.environmentVariable('MCAGENT_JAR'))
-                    .orElse('../forge-mcp/build/libs/mcagent-agent.jar')
-                    .get())
-            def tracerDebugFile = layout.buildDirectory.file('tracer-debug/tacz-tracer.jsonl').get().asFile
-            def scopeDebugFile = layout.buildDirectory.file('scope-debug/tacz-scope-render.jsonl').get().asFile
-            gameDirectory = mcAgentGameDir
-            programArguments.addAll '--username', 'mcagent_cli'
-            if (!taczMcAgentQuickplayWorld.isBlank()) {
-                programArguments.addAll '--quickPlaySingleplayer', taczMcAgentQuickplayWorld
-            }
-            if (!taczMcAgentQuickplayServer.isBlank()) {
-                programArguments.addAll '--quickPlayMultiplayer', taczMcAgentQuickplayServer
-            }
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            if (taczDebugTracer || taczDebugTracerAutoTest) {
-                systemProperty 'tacz.debug.tracer', 'true'
-                systemProperty 'tacz.debug.tracer.file', tracerDebugFile.absolutePath
-                systemProperty 'mcagent.testMode', 'true'
-            }
-            if (taczDebugScope || taczDebugScopeAutoTest) {
-                systemProperty 'tacz.debug.scopeRender', 'true'
-                systemProperty 'tacz.debug.scope.file', scopeDebugFile.absolutePath
-                systemProperty 'tacz.debug.scope.maxSamples', taczDebugScopeMaxSamples
-                systemProperty 'mcagent.testMode', 'true'
-            }
-            if (taczDebugTracerAutoTest) {
-                systemProperty 'tacz.debug.tracer.autotest', 'true'
-            }
-            if (taczDebugScopeAutoTest) {
-                systemProperty 'tacz.debug.scope.autotest', 'true'
-            }
-            if (!taczDebugScopeCase.isBlank()) {
-                systemProperty 'tacz.debug.scope.case', taczDebugScopeCase
-            }
-            if (!taczDebugScopeHoldPhase.isBlank()) {
-                systemProperty 'tacz.debug.scope.holdPhase', taczDebugScopeHoldPhase
-            }
-            if (!taczDebugScopeZoom.isBlank()) {
-                systemProperty 'tacz.debug.scope.zoom', taczDebugScopeZoom
-            }
-            if (!taczDebugScopeYaw.isBlank()) {
-                systemProperty 'tacz.debug.scope.yaw', taczDebugScopeYaw
-            }
-            if (!taczDebugScopePitch.isBlank()) {
-                systemProperty 'tacz.debug.scope.pitch', taczDebugScopePitch
-            }
-            if (taczDebugTracerNearOnly) {
-                systemProperty 'tacz.debug.tracer.nearOnly', 'true'
-            }
-            if (mcAgentJarFile.exists()) {
-                jvmArguments.add("-javaagent:${mcAgentJarFile.absolutePath}=gameDir=${mcAgentGameDir.absolutePath};minecraftVersion=${minecraft_version};target=forge")
-            } else {
-                logger.warn("MC Agent jar not found at ${mcAgentJarFile}; runClientMcAgent will start without agent control")
-            }
         }
 
         server {
@@ -376,6 +315,9 @@ dependencies {
 
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.0"))
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
@@ -417,6 +359,10 @@ tasks.named('jar', Jar).configure {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 publishing {

@@ -1,5 +1,7 @@
 package com.tacz.guns.api.event.common;
 
+import com.tacz.guns.entity.EntityKineticBullet;
+import com.tacz.guns.api.item.runtime.GunHitContext;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -26,10 +28,18 @@ public class EntityKillByGunEvent extends Event implements KubeJSGunEventPoster<
     private final boolean isHeadShot;
     private final float headshotMultiplier;
     private final LogicalSide logicalSide;
+    private final GunHitContext hitContext;
 
     public EntityKillByGunEvent(Entity bullet, @Nullable LivingEntity hurtEntity, @Nullable LivingEntity attacker,
                                 Identifier gunId, Identifier gunDisplayId, float baseDamage, @Nullable Pair<DamageSource, DamageSource> sources,
                                 boolean isHeadShot, float headshotMultiplier, LogicalSide logicalSide) {
+        this(bullet, hurtEntity, attacker, gunId, gunDisplayId, baseDamage, sources, isHeadShot,
+                headshotMultiplier, logicalSide, GunHitContext.unknown());
+    }
+
+    public EntityKillByGunEvent(Entity bullet, @Nullable LivingEntity hurtEntity, @Nullable LivingEntity attacker,
+                                Identifier gunId, Identifier gunDisplayId, float baseDamage, @Nullable Pair<DamageSource, DamageSource> sources,
+                                boolean isHeadShot, float headshotMultiplier, LogicalSide logicalSide, GunHitContext hitContext) {
         this.bullet = bullet;
         this.killedEntity = hurtEntity;
         this.attacker = attacker;
@@ -41,6 +51,7 @@ public class EntityKillByGunEvent extends Event implements KubeJSGunEventPoster<
         this.isHeadShot = isHeadShot;
         this.headshotMultiplier = headshotMultiplier;
         this.logicalSide = logicalSide;
+        this.hitContext = hitContext == null ? GunHitContext.unknown() : hitContext;
         postEventToKubeJS(this);
     }
 
@@ -88,7 +99,28 @@ public class EntityKillByGunEvent extends Event implements KubeJSGunEventPoster<
         return logicalSide;
     }
 
+    public GunHitContext getHitContext() {
+        return hitContext;
+    }
+
     public Identifier getGunDisplayId() {
         return gunDisplayId;
+    }
+
+    @Nullable
+    public Identifier getAmmoId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getAmmoId() : null;
+    }
+
+    public String getAmmoSlotId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getAmmoSlotId() : "";
+    }
+
+    public String getRuntimeItemId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getRuntimeItemId() : "";
+    }
+
+    public long getShotId() {
+        return bullet instanceof EntityKineticBullet kineticBullet ? kineticBullet.getShotId() : 0L;
     }
 }

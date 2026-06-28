@@ -10,14 +10,19 @@ import com.tacz.guns.api.entity.ITargetEntity;
 import com.tacz.guns.api.entity.KnockBackModifier;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.common.EntityKillByGunEvent;
+import com.tacz.guns.api.event.common.GunProjectilePenetrationEvent;
+import com.tacz.guns.api.event.common.GunPropertyModifyEvent;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.api.item.nbt.ItemStackNbtHelper;
+import com.tacz.guns.api.item.runtime.GunHitContext;
+import com.tacz.guns.api.item.runtime.GunRuntimeContext;
 import com.tacz.guns.client.particle.AmmoParticleSpawner;
 import com.tacz.guns.config.common.AmmoConfig;
 import com.tacz.guns.config.sync.SyncConfig;
 import com.tacz.guns.entity.shooter.ShooterDataHolder;
 import com.tacz.guns.init.ModDamageTypes;
+import com.tacz.guns.item.ModernKineticGunItem;
 import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.event.ServerMessageGunHurt;
 import com.tacz.guns.network.message.event.ServerMessageGunKill;
@@ -136,6 +141,7 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
     private float damageModifier = 1;
     // 穿透数
     private int pierce = 1;
+    private int initialPierce = 1;
     // 初始位置
     private Vec3 startPos;
     // 曳光弹
@@ -146,6 +152,7 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
     private Identifier gunId;
     // 枪械display ID
     private Identifier gunDisplayId;
+    private GunRuntimeContext runtimeContext;
     private float armorIgnore;
     private float headShot;
     private float shotDamageMultiplier = 1f;
@@ -161,20 +168,32 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
 
     public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, Identifier ammoId, Identifier gunId,
                                Identifier gunDisplayId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
-        this(TYPE, worldIn, throwerIn, gunItem, ammoId, gunId, gunDisplayId, isTracerAmmo, gunData, bulletData);
+        this(TYPE, worldIn, throwerIn, gunItem, GunRuntimeContext.none(gunId, ammoId), gunDisplayId, isTracerAmmo, gunData, bulletData);
+    }
+
+    public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, GunRuntimeContext runtimeContext,
+                               Identifier gunDisplayId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
+        this(TYPE, worldIn, throwerIn, gunItem, runtimeContext, gunDisplayId, isTracerAmmo, gunData, bulletData);
     }
 
     public EntityKineticBullet(Level worldIn, LivingEntity throwerIn, ItemStack gunItem, Identifier ammoId, Identifier gunId, boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
-        this(TYPE, worldIn, throwerIn, gunItem, ammoId, gunId, DefaultAssets.DEFAULT_GUN_DISPLAY_ID, isTracerAmmo, gunData, bulletData);
+        this(TYPE, worldIn, throwerIn, gunItem, GunRuntimeContext.none(gunId, ammoId), DefaultAssets.DEFAULT_GUN_DISPLAY_ID, isTracerAmmo, gunData, bulletData);
     }
 
     protected EntityKineticBullet(EntityType<? extends Projectile> type, Level worldIn, LivingEntity throwerIn, ItemStack gunItem,
                                   Identifier ammoId, Identifier gunId, Identifier gunDisplayId,
                                   boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
+        this(type, worldIn, throwerIn, gunItem, GunRuntimeContext.none(gunId, ammoId), gunDisplayId, isTracerAmmo, gunData, bulletData);
+    }
+
+    protected EntityKineticBullet(EntityType<? extends Projectile> type, Level worldIn, LivingEntity throwerIn, ItemStack gunItem,
+                                  GunRuntimeContext runtimeContext, Identifier gunDisplayId,
+                                  boolean isTracerAmmo, GunData gunData, BulletData bulletData) {
         this(type, throwerIn.getX(), throwerIn.getEyeY() - (double) 0.1F, throwerIn.getZ(), worldIn);
         this.setOwner(throwerIn);
+        setRuntimeContext(runtimeContext);
         // gunId 提前赋值，以让 modifyProperty 可以在构造函数中运行
-        this.gunId = gunId;
+        this.gunId = getRuntimeContext().gunId();
         AttachmentCacheProperty cacheProperty = Objects.requireNonNull(IGunOperator.fromLivingEntity(throwerIn).getCacheProperty());
         float armorIgnore = modifyProperty(GunProperties.ARMOR_IGNORE, Float.class, cacheProperty.getCache(GunProperties.ARMOR_IGNORE));
         float headshot = modifyProperty(GunProperties.HEADSHOT_MULTIPLIER, Float.class, cacheProperty.getCache(GunProperties.HEADSHOT_MULTIPLIER));
@@ -182,7 +201,7 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
         this.armorIgnore = Mth.clamp(armorIgnore, 0f, 1f);
         this.headShot = Math.max(headshot, 0f);
         this.knockback = Math.max(knockback, 0f);
-        this.ammoId = ammoId;
+        this.ammoId = getRuntimeContext().ammoId();
         float lifeSecond = modifyProperty(BULLET_LIFE, Float.class, bulletData.getLifeSecond());
         this.life = Mth.clamp((int) (lifeSecond * 20), 1, Integer.MAX_VALUE);
         // speed 字段是无效的，实际生效的速度是 shootOnce 里传给 doBulletSpread 的速度
@@ -197,6 +216,7 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
         this.distanceAmount = modifyProperty(GunProperties.EFFECTIVE_RANGE, Float.class, cacheProperty.getCache(GunProperties.EFFECTIVE_RANGE));
         int pierce = modifyProperty(GunProperties.PIERCE, Integer.class, cacheProperty.getCache(GunProperties.PIERCE));
         this.pierce = Mth.clamp(pierce, 1, Integer.MAX_VALUE);
+        this.initialPierce = this.pierce;
         ExplosionData explosionData = Objects.requireNonNullElse(cacheProperty.getCache(ExplosionModifier.ID), DEFAULT_EXPLOSION_DATA);
         this.explosion = modifyProperty(EXPLODE_ENABLED, Boolean.class, explosionData.isExplode());
         if (this.explosion) {
@@ -409,10 +429,11 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
         LivingEntity attacker = owner instanceof LivingEntity ? (LivingEntity) owner : null;
         var sources = createDamageSources(MaybeMultipartEntity.of(entity));
         boolean headshot = result.isHeadshot();
+        GunHitContext hitContext = hitContext(result.getLocation());
         float damage = this.getDamage(result.getLocation());
         float headShotMultiplier = Math.max(this.headShot, 0);
         // 发布Pre事件
-        var preEvent = new EntityHurtByGunEvent.Pre(this, entity, attacker, this.gunId, this.gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER);
+        var preEvent = new EntityHurtByGunEvent.Pre(this, entity, attacker, this.gunId, this.gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER, hitContext);
         if (NeoForge.EVENT_BUS.post(preEvent).isCanceled()) {
             return;
         }
@@ -468,10 +489,10 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
                 int attackerId = attacker == null ? 0 : attacker.getId();
                 // 如果生物死了
                 if (livingCore.isDeadOrDying()) {
-                    NeoForge.EVENT_BUS.post(new EntityKillByGunEvent(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER));
+                    NeoForge.EVENT_BUS.post(new EntityKillByGunEvent(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER, hitContext));
                     NetworkHandler.sendToDimension(new ServerMessageGunKill(getId(), livingCore.getId(), attackerId, newGunId, gunDisplayId, damage, headshot, headShotMultiplier), livingCore);
                 } else {
-                    NeoForge.EVENT_BUS.post(new EntityHurtByGunEvent.Post(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER));
+                    NeoForge.EVENT_BUS.post(new EntityHurtByGunEvent.Post(this, livingCore, attacker, newGunId, gunDisplayId, damage, sources, headshot, headShotMultiplier, LogicalSide.SERVER, hitContext));
                     NetworkHandler.sendToDimension(new ServerMessageGunHurt(getId(), livingCore.getId(), attackerId, newGunId, gunDisplayId, damage, headshot, headShotMultiplier), livingCore);
                 }
             }
@@ -486,8 +507,25 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
         Vec3 hitVec = result.getLocation();
         // 触发事件
         // 提前触发事件以让事件可以取消原版的命中行为（例如敲钟，打倒靶子等）
-        if (NeoForge.EVENT_BUS.post(new AmmoHitBlockEvent(this.level(), result, this.level().getBlockState(pos), this)).isCanceled()) {
+        BlockState blockState = this.level().getBlockState(pos);
+        if (NeoForge.EVENT_BUS.post(new AmmoHitBlockEvent(this.level(), result, blockState, this, startVec, endVec)).isCanceled()) {
             return;
+        }
+        GunProjectilePenetrationEvent penetrationEvent = new GunProjectilePenetrationEvent(
+                this,
+                getRuntimeContext(),
+                result,
+                blockState,
+                startVec,
+                endVec
+        );
+        NeoForge.EVENT_BUS.post(penetrationEvent);
+        if (penetrationEvent.shouldContinueProjectile()) {
+            this.pierce = Math.max(0, this.pierce - penetrationEvent.getPierceCost());
+            this.damageModifier *= penetrationEvent.getDamageMultiplier();
+            if (this.pierce > 0) {
+                return;
+            }
         }
         super.onHitBlock(result);
         // 爆炸
@@ -531,8 +569,14 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
             }
         }
         // 让脚本修改枪械伤害
-        float modifiedDamage = modifyProperty(GunProperties.DAMAGE, Float.class, base);
+        float modifiedDamage = modifyProperty(GunProperties.DAMAGE.name(), Float.class, base, GunPropertyModifyEvent.Stage.HIT_ENTITY);
         return Math.max(modifiedDamage * this.shotDamageMultiplier, 0F);
+    }
+
+    public GunHitContext hitContext(Vec3 hitVec) {
+        double distance = hitVec == null || this.startPos == null ? -1.0d : hitVec.distanceTo(this.startPos);
+        int penetrations = Math.max(0, this.initialPierce - this.pierce);
+        return new GunHitContext(distance, penetrations, this.damageModifier);
     }
 
     /**
@@ -546,11 +590,29 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
      * @since 1.1.7
      */
     private <T> T modifyProperty(String id, Class<T> type, T original) {
+        return modifyProperty(id, type, original, GunPropertyModifyEvent.Stage.PROJECTILE_CREATE);
+    }
+
+    private <T> T modifyProperty(String id, Class<T> type, T original, GunPropertyModifyEvent.Stage stage) {
         if (getOwner() instanceof LivingEntity shooter) {
             ItemStack gun = shooter.getMainHandItem();
             if (gun.getItem() instanceof AbstractGunItem gunInterface && Objects.equals(this.gunId, gunInterface.getGunId(gun))) {
                 ShooterDataHolder dataHolder = IGunOperator.fromLivingEntity(shooter).getDataHolder();
-                return gunInterface.modifyProperty(dataHolder, gun, shooter, id, type, original);
+                if (gunInterface instanceof ModernKineticGunItem modernKineticGunItem) {
+                    return modernKineticGunItem.modifyProperty(dataHolder, gun, shooter, "modify_property", id, type, original, getRuntimeContext(), stage);
+                }
+                T modified = gunInterface.modifyProperty(dataHolder, gun, shooter, id, type, original);
+                GunPropertyModifyEvent<T> event = new GunPropertyModifyEvent<>(
+                        shooter,
+                        gun,
+                        getRuntimeContext(),
+                        id,
+                        type,
+                        stage,
+                        modified
+                );
+                NeoForge.EVENT_BUS.post(event);
+                return event.getValue();
             }
         }
         return original;
@@ -621,6 +683,10 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
         buffer.writeBoolean(this.isTracerAmmo);
         buffer.writeIdentifier(this.gunId);
         buffer.writeIdentifier(this.gunDisplayId);
+        GunRuntimeContext context = getRuntimeContext();
+        buffer.writeLong(context.shotId());
+        buffer.writeUtf(context.ammoSlotId());
+        buffer.writeUtf(context.runtimeItemId());
     }
 
     @Override
@@ -646,6 +712,10 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
         this.isTracerAmmo = additionalData.readBoolean();
         this.gunId = additionalData.readIdentifier();
         this.gunDisplayId = additionalData.readIdentifier();
+        long shotId = additionalData.readLong();
+        String ammoSlotId = additionalData.readUtf();
+        String runtimeItemId = additionalData.readUtf();
+        this.runtimeContext = new GunRuntimeContext(shotId, this.gunId, this.ammoId, ammoSlotId, runtimeItemId);
     }
 
     public Identifier getAmmoId() {
@@ -658,6 +728,31 @@ public class EntityKineticBullet extends Projectile implements IEntityWithComple
 
     public Identifier getGunDisplayId() {
         return gunDisplayId;
+    }
+
+    public void setRuntimeContext(GunRuntimeContext runtimeContext) {
+        this.runtimeContext = runtimeContext == null ? GunRuntimeContext.none(this.gunId, this.ammoId) : runtimeContext;
+        this.gunId = this.runtimeContext.gunId();
+        this.ammoId = this.runtimeContext.ammoId();
+    }
+
+    public GunRuntimeContext getRuntimeContext() {
+        if (runtimeContext == null) {
+            runtimeContext = GunRuntimeContext.none(this.gunId, this.ammoId);
+        }
+        return runtimeContext;
+    }
+
+    public String getAmmoSlotId() {
+        return getRuntimeContext().ammoSlotId();
+    }
+
+    public String getRuntimeItemId() {
+        return getRuntimeContext().runtimeItemId();
+    }
+
+    public long getShotId() {
+        return getRuntimeContext().shotId();
     }
 
     public boolean isTracerAmmo() {
