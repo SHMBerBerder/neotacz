@@ -1,0 +1,4 @@
+[submodule "simplebedrockmodel"]
+	path = simplebedrockmodel
+	url = https://github.com/SHMBerBerder/SimpleBedrockModel.git
+	branch = neoforge-26.2

@@ -10,14 +10,16 @@ plugins {
 
 rootProject.name = 'tacz'
 
-def simpleBedrockModelBuild = [
-        file('../simplebedrockmodel'),
-        file('../FPSMatch/porting/simplebedrockmodel')
-].find { it.exists() }
-if (simpleBedrockModelBuild != null) {
-    includeBuild(simpleBedrockModelBuild) {
-        dependencySubstitution {
-            substitute module('com.github.mcmodderanchor:simplebedrockmodel') using project(':')
-        }
+def requireSubmoduleCheckout = { String relativePath ->
+    def checkoutDir = file(relativePath)
+    if (!checkoutDir.isDirectory() || !new File(checkoutDir, 'settings.gradle').isFile()) {
+        throw new GradleException("Missing source dependency submodule '${relativePath}'. Run 'git submodule update --init --recursive' from ${rootDir}.")
+    }
+    checkoutDir
+}
+
+includeBuild(requireSubmoduleCheckout('simplebedrockmodel')) {
+    dependencySubstitution {
+        substitute module('com.github.mcmodderanchor:simplebedrockmodel') using project(':')
     }
 }
