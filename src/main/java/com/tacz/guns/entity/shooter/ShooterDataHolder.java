@@ -61,6 +61,7 @@ public class ShooterDataHolder {
      * 用于在每个 tick 计算: 从开始装弹 到 当前时间点 的时长，并依此计算出换弹的状态和冷却。
      */
     public long reloadTimestamp = -1;
+    public double reloadDurationMultiplier = 1.0d;
     /**
      * 装填状态的缓存。会在每个 tick 进行更新。
      */
@@ -115,6 +116,7 @@ public class ShooterDataHolder {
         isAiming = false;
         aimingProgress = 0;
         reloadTimestamp = -1;
+        reloadDurationMultiplier = 1.0d;
         reloadStateType = ReloadState.StateType.NOT_RELOADING;
         sprintTimestamp = -1;
         sprintTimeS = 0;

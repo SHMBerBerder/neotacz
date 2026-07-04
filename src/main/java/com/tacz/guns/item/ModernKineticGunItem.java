@@ -405,8 +405,8 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
         ReloadState.StateType oldStateType = ReloadState.StateType.values()[api.getReloadStateType()];
         long progressTime = api.getReloadTime();
         if (oldStateType.isReloadingEmpty()) {
-            long feedTime = (long) (reloadData.getFeed().getEmptyTime() * 1000);
-            long finishingTime = (long) (reloadData.getCooldown().getEmptyTime() * 1000);
+            long feedTime = scaledReloadTime((long) (reloadData.getFeed().getEmptyTime() * 1000), api);
+            long finishingTime = scaledReloadTime((long) (reloadData.getCooldown().getEmptyTime() * 1000), api);
             if (progressTime < feedTime) {
                 stateType = ReloadState.StateType.EMPTY_RELOAD_FEEDING;
                 countDown = feedTime - progressTime;
@@ -418,8 +418,8 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
                 countDown = ReloadState.NOT_RELOADING_COUNTDOWN;
             }
         } else if (oldStateType.isReloadingTactical()) {
-            long feedTime = (long) (reloadData.getFeed().getTacticalTime() * 1000);
-            long finishingTime = (long) (reloadData.getCooldown().getTacticalTime() * 1000);
+            long feedTime = scaledReloadTime((long) (reloadData.getFeed().getTacticalTime() * 1000), api);
+            long finishingTime = scaledReloadTime((long) (reloadData.getCooldown().getTacticalTime() * 1000), api);
             if (progressTime < feedTime) {
                 stateType = ReloadState.StateType.TACTICAL_RELOAD_FEEDING;
                 countDown = feedTime - progressTime;
@@ -446,6 +446,10 @@ public class ModernKineticGunItem extends AbstractGunItem implements GunItemData
         reloadState.setStateType(stateType);
         reloadState.setCountDown(countDown);
         return reloadState;
+    }
+
+    private static long scaledReloadTime(long baseMs, ModernKineticGunScriptAPI api) {
+        return Math.max(0L, Math.round(baseMs * Math.max(0.0d, api.getDataHolder().reloadDurationMultiplier)));
     }
 
     private void defaultReloadFinishing(ModernKineticGunScriptAPI api, boolean isTactical) {

@@ -13,11 +13,17 @@ public class GunReloadEvent extends Event implements KubeJSGunEventPoster<GunRel
     private final LivingEntity entity;
     private final ItemStack gunItemStack;
     private final LogicalSide logicalSide;
+    private long durationMs;
 
     public GunReloadEvent(LivingEntity entity, ItemStack gunItemStack, LogicalSide side) {
+        this(entity, gunItemStack, side, 0L);
+    }
+
+    public GunReloadEvent(LivingEntity entity, ItemStack gunItemStack, LogicalSide side, long durationMs) {
         this.entity = entity;
         this.gunItemStack = gunItemStack;
         this.logicalSide = side;
+        this.durationMs = Math.max(0L, durationMs);
         postEventToKubeJS(this);
     }
 
@@ -31,5 +37,13 @@ public class GunReloadEvent extends Event implements KubeJSGunEventPoster<GunRel
 
     public LogicalSide getLogicalSide() {
         return logicalSide;
+    }
+
+    public long getDurationMs() {
+        return durationMs;
+    }
+
+    public void setDurationMs(long durationMs) {
+        this.durationMs = Math.max(0L, durationMs);
     }
 }

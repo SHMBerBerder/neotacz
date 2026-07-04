@@ -7,7 +7,9 @@ import com.tacz.guns.api.event.common.GunReloadEvent;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.event.ServerMessageGunReload;
+import com.tacz.guns.resource.index.CommonGunIndex;
 import com.tacz.guns.resource.pojo.data.gun.Bolt;
+import com.tacz.guns.resource.pojo.data.gun.GunReloadData;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -62,12 +64,16 @@ public class LivingEntityReload {
                 return;
             }
             // 触发装弹事件
-            if (NeoForge.EVENT_BUS.post(new GunReloadEvent(shooter, currentGunItem, LogicalSide.SERVER)).isCanceled()) {
-                return;
-            }
-            NetworkHandler.sendToTrackingEntity(new ServerMessageGunReload(shooter.getId(), currentGunItem), shooter);
             Bolt boltType = gunIndex.getGunData().getBolt();
             int ammoCount = gunItem.getCurrentAmmoCount(currentGunItem) + (gunItem.hasBulletInBarrel(currentGunItem) && boltType != Bolt.OPEN_BOLT ? 1 : 0);
+            long baseReloadDurationMs = reloadDurationMs(gunIndex, ammoCount > 0);
+            GunReloadEvent reloadEvent = new GunReloadEvent(shooter, currentGunItem, LogicalSide.SERVER, baseReloadDurationMs);
+            if (NeoForge.EVENT_BUS.post(reloadEvent).isCanceled()) {
+                data.reloadDurationMultiplier = 1.0d;
+                return;
+            }
+            data.reloadDurationMultiplier = durationMultiplier(baseReloadDurationMs, reloadEvent.getDurationMs());
+            NetworkHandler.sendToTrackingEntity(new ServerMessageGunReload(shooter.getId(), currentGunItem), shooter);
             if (ammoCount <= 0) {
                 // 初始化空仓换弹的 tick 的状态
                 data.reloadStateType = ReloadState.StateType.EMPTY_RELOAD_FEEDING;
@@ -80,6 +86,7 @@ public class LivingEntityReload {
             if (!gunItem.startReload(data, currentGunItem, shooter)) {
                 data.reloadStateType = ReloadState.StateType.NOT_RELOADING;
                 data.reloadTimestamp = -1;
+                data.reloadDurationMultiplier = 1.0d;
             }
         });
     }
@@ -116,7 +123,23 @@ public class LivingEntityReload {
         data.reloadStateType = result.getStateType();
         if (!result.getStateType().isReloading()) {
             data.reloadTimestamp = -1;
+            data.reloadDurationMultiplier = 1.0d;
         }
         return result;
+    }
+
+    private static long reloadDurationMs(CommonGunIndex gunIndex, boolean tacticalReload) {
+        GunReloadData reloadData = gunIndex.getGunData().getReloadData();
+        float seconds = tacticalReload
+                ? reloadData.getCooldown().getTacticalTime()
+                : reloadData.getCooldown().getEmptyTime();
+        return Math.max(0L, Math.round(seconds * 1000.0f));
+    }
+
+    private static double durationMultiplier(long baseReloadDurationMs, long eventDurationMs) {
+        if (baseReloadDurationMs <= 0L) {
+            return 1.0d;
+        }
+        return Math.max(0.0d, eventDurationMs / (double) baseReloadDurationMs);
     }
 }
