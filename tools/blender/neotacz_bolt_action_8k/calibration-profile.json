@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "sample_hz": 480,
+  "max_contact_error": 0.001,
+  "inputs": {
+    "geometry": "../../../src/main/resources/assets/tacz/custom/tacz_default_gun/assets/tacz/geo_models/gun/m95_geo.json",
+    "animation": "../../../src/main/resources/assets/tacz/custom/tacz_default_gun/assets/tacz/animations/m95.animation.json",
+    "gltf": "/tmp/neotacz-bolt-action-8k-adapted/neotacz_bolt_action_rifle_7_62_8k.gltf",
+    "model_id": "bolt_action_mesh:models/gltf/bolt_action_rifle_762/neotacz_bolt_action_rifle_7_62_8k.gltf",
+    "render_scale": 1.662808055,
+    "base_clip": "static_idle",
+    "node_map": {"m95": "GunVisual", "m95_bolt": "BoltAssemblyVisual", "rotate": "BoltHandleVisual", "mag_and_bullet": "MagazineVisual"}
+  },
+  "provenance": {
+    "space": "Target points: adapted glTF node-local metres before GunVisual transform and render_scale; tool source pivots: absolute Bedrock pixels.",
+    "joint_convention": "OpenUSD prismatic/revolute axis and limits terminology; this JSON is a project profile, not a USD document.",
+    "axis_seed": [-1, 0, 0],
+    "pivot_seed": [-0.23714835941791534, 0.05067652463912964, 0],
+    "pivot_evidence": "Identical original bolt_a/bolt_b DCC origins; adjacent cylindrical components support X-axis. Not a manufacturer joint specification.",
+    "visual_travel_metres": 0.0960629,
+    "travel_evidence": "Authored visual clearance = measured source cartridge X extent 0.07685032 times 1.25; this margin is a design choice, not a public standard or certified mechanical stop.",
+    "rotation_evidence": "Preserve source authored 0..50.88 degree handle gesture while correcting its pivot; no claim this is a measured physical angle limit.",
+    "contact_evidence": "Actual knob outer surface and stock/fore-end triangle-plane intersections in run/bolt-calibration-evidence/measurement.json. MC contact is the inner distal cube surface, shared by wide/slim arms, not an anatomical palm locator. Wrist rotations remain authored.",
+    "scope": "Reusable mathematical calibration with explicit asset measurements; no runtime model-name logic. Original six 8K JPEGs unchanged."
+  },
+  "pivots": [
+    {"bone":"m95_bolt", "pivot_bedrock_pixels":[0,9.515944847,-2.661666510]},
+    {"bone":"bolt", "pivot_bedrock_pixels":[0,9.515944847,-2.661666510]},
+    {"bone":"rotate", "pivot_bedrock_pixels":[0,9.515944847,-2.661666510]}
+  ],
+  "visibility_steps": [{"clip":"reload_empty", "bone":"mag_and_bullet"}],
+  "joints": [
+    {"bone":"m95_bolt", "kind":"prismatic", "axis":"Z", "unit":"bedrock_pixels", "limit_policy":"clamp_and_bake", "source_range":[0,8.1], "target_range":[0,2.555746623], "clips":["bolt","reload_empty","inspect","inspect_empty"], "provenance":"Source measured keys 0..8.1 px normalized to 0..1; target authored clearance 0.0960629 glTF m times render scale and 16. Source +Z corresponds to target local -X."},
+    {"bone":"rotate", "kind":"revolute", "axis":"Z", "unit":"degrees", "limit_policy":"clamp_and_bake", "source_range":[0,50.88], "target_range":[0,50.88], "clips":["bolt","reload_empty","inspect","inspect_empty"], "provenance":"Preserved authored gesture limits; pivot relocated to source DCC origin supported by cylindrical geometry. Not manufacturer data."}
+  ],
+  "bind_contacts": [
+    {"hand_anchor":"righthand_pos", "hand_point_after_arm_model":[-0.312708125,0.753117192,0], "target_node":"GunBodyGeometry", "target_point_local":[-0.3,-0.033446842,0.005817338], "reference_clip":"static_idle", "reference_time":0},
+    {"hand_anchor":"lefthand_pos", "hand_point_after_arm_model":[0.312708125,0.753117192,0], "target_node":"GunBodyGeometry", "target_point_local":[-0.1,0.002980770,0], "reference_clip":"static_idle", "reference_time":0}
+  ],
+  "contacts": [
+    {"clip":"bolt","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"BoltHandleVisual","target_point_local":[-0.224621847,0.016826950,0.038178138],"interval":[0.1,0.2333,1.2333,1.5]},
+    {"clip":"bolt","hand_bone":"lefthand","hand_anchor":"lefthand_pos","hand_point_after_arm_model":[0.312708125,0.753117192,0],"target_node":"GunBodyGeometry","target_point_local":[-0.1,0.002980770,0],"interval":[0,0,1.7,1.7]},
+    {"clip":"reload_tactical","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"MagazineVisual","target_point_local":[-0.200732410,-0.020649220,0.008589710],"interval":[0.7,1.0667,2.6,3.1]},
+    {"clip":"reload_tactical","hand_bone":"lefthand","hand_anchor":"lefthand_pos","hand_point_after_arm_model":[0.312708125,0.753117192,0],"target_node":"GunBodyGeometry","target_point_local":[-0.1,0.002980770,0],"interval":[0,0,4.5,4.5]},
+    {"clip":"reload_empty","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"BoltHandleVisual","target_point_local":[-0.224621847,0.016826950,0.038178138],"interval":[0.05,0.1667,0.4333,0.7]},
+    {"clip":"reload_empty","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"MagazineVisual","target_point_local":[-0.200732410,-0.020649220,0.008589710],"interval":[0.85,1,1.3,1.4]},
+    {"clip":"reload_empty","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"BoltHandleVisual","target_point_local":[-0.224621847,0.016826950,0.038178138],"interval":[4.25,4.5,4.8,5.1]},
+    {"clip":"reload_empty","hand_bone":"lefthand","hand_anchor":"lefthand_pos","hand_point_after_arm_model":[0.312708125,0.753117192,0],"target_node":"GunBodyGeometry","target_point_local":[-0.1,0.002980770,0],"interval":[0,0,2.35,2.55]},
+    {"clip":"reload_empty","hand_bone":"lefthand","hand_anchor":"lefthand_pos","hand_point_after_arm_model":[0.312708125,0.753117192,0],"target_node":"MagazineVisual","target_point_local":[-0.200732410,-0.020649220,-0.008589703],"interval":[2.6,2.7,3.7,3.95]},
+    {"clip":"reload_empty","hand_bone":"lefthand","hand_anchor":"lefthand_pos","hand_point_after_arm_model":[0.312708125,0.753117192,0],"target_node":"GunBodyGeometry","target_point_local":[-0.1,0.002980770,0],"interval":[4,4.15,5.6,5.6]},
+    {"clip":"inspect","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"BoltHandleVisual","target_point_local":[-0.224621847,0.016826950,0.038178138],"interval":[4,4.1667,5.3667,5.6]},
+    {"clip":"inspect_empty","hand_bone":"righthand","hand_anchor":"righthand_pos","hand_point_after_arm_model":[-0.312708125,0.753117192,0],"target_node":"BoltHandleVisual","target_point_local":[-0.224621847,0.016826950,0.038178138],"interval":[4,4.1667,5.3667,5.6]}
+  ]
+}

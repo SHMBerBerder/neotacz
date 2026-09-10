@@ -28,6 +28,7 @@ import com.tacz.guns.sound.SoundManager;
 import com.tacz.guns.util.ColorHex;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.arguments.ParticleArgument;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -39,6 +40,7 @@ import org.luaj.vm2.LuaTable;
 import org.luaj.vm2.lib.jse.CoerceJavaToLua;
 
 import java.util.*;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.BiFunction;
@@ -48,11 +50,22 @@ import java.util.stream.Stream;
  * 经过处理和校验的枪械显示数据
  */
 public class GunDisplayInstance {
-    private static final HolderLookup.Provider BUILTIN_PARTICLE_LOOKUP = HolderLookup.Provider.create(Stream.of((HolderLookup.RegistryLookup<?>) BuiltInRegistries.PARTICLE_TYPE));
+    static final int LOAD_MODEL = 1, LOAD_LOD = 2, LOAD_RUNTIME = 4;
+
+    private static final class ParticleLookupHolder {
+        // Displays without ammo particles do not need the built-in particle registry.
+        private static final HolderLookup.Provider VALUE = HolderLookup.Provider.create(
+                Stream.of((HolderLookup.RegistryLookup<?>) BuiltInRegistries.PARTICLE_TYPE));
+    }
 
     private final Identifier displayId;
     private final GunDisplay display;
+    private final boolean forceAsync;
+    private final Object guiPendingIdentity = new Object();
     private final Object loadLock = new Object();
+    // Scheduling must never wait for a decoder or animation builder holding loadLock.
+    private final Object warmUpLock = new Object();
+    private volatile boolean invalidated;
 
     // 加载标志位
     private volatile boolean modelLoaded = false;
@@ -63,6 +76,7 @@ public class GunDisplayInstance {
     private volatile boolean modelLoadFailed = false;
     private volatile boolean lodLoadFailed = false;
     private volatile boolean animationLoadFailed = false;
+    private volatile Exception gltfBodyLoadFailure;
 
     // 异步加载任务
     private volatile CompletableFuture<Void> modelWarmUpTask = null;
@@ -105,6 +119,7 @@ public class GunDisplayInstance {
     GunDisplayInstance(Identifier displayId, GunDisplay display) {
         this.displayId = displayId;
         this.display = Objects.requireNonNull(display, "display");
+        this.forceAsync = false;
         initBase(display);
         if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
             ensureAnimationLoaded();
@@ -115,17 +130,100 @@ public class GunDisplayInstance {
         return new GunDisplayInstance(displayId, display);
     }
 
+    private GunDisplayInstance(GunDisplayInstance source) {
+        // Quality-only rebuilding preserves validated metadata without repeating sound/particle side effects.
+        displayId = source.displayId;
+        display = source.display;
+        forceAsync = true;
+        thirdPersonAnimation = source.thirdPersonAnimation;
+        playerAnimator3rd = source.playerAnimator3rd;
+        is3rdFixedHand = source.is3rdFixedHand;
+        sounds = new HashMap<>(source.sounds);
+        preloadSounds = new ArrayList<>(source.preloadSounds);
+        transform = source.transform;
+        slotTexture = source.slotTexture;
+        hudTexture = source.hudTexture;
+        hudEmptyTexture = source.hudEmptyTexture;
+        shellEjection = source.shellEjection;
+        muzzleFlash = source.muzzleFlash;
+        offhandShow = source.offhandShow;
+        hotbarShow = source.hotbarShow == null ? null : new Int2ObjectArrayMap<>(source.hotbarShow);
+        ironZoom = source.ironZoom;
+        zoomModelFov = source.zoomModelFov;
+        showCrosshair = source.showCrosshair;
+        particle = source.particle;
+        tracerColor = source.tracerColor == null ? null : source.tracerColor.clone();
+        controllableData = source.controllableData == null ? null : source.controllableData.clone();
+        ammoCountStyle = source.ammoCountStyle;
+        damageStyle = source.damageStyle;
+        laserConfig = source.laserConfig;
+        enableTransparency = source.enableTransparency;
+    }
+
+    GunDisplayInstance deferredCopy() {
+        return new GunDisplayInstance(this);
+    }
+
+    int requestedLoads() {
+        synchronized (warmUpLock) {
+            if (invalidated) return 0;
+            int requested = modelLoaded || modelLoadFailed || modelWarmUpTask != null ? LOAD_MODEL : 0;
+            if (lodLoaded || lodLoadFailed || lodWarmUpTask != null) requested |= LOAD_LOD;
+            if (animationLoaded || animationLoadFailed || animationWarmUpTask != null) requested |= LOAD_MODEL | LOAD_RUNTIME;
+            return invalidated ? 0 : requested;
+        }
+    }
+
+    List<CompletableFuture<Void>> warmUpForReload(int requests) {
+        if ((requests & ~(LOAD_MODEL | LOAD_LOD | LOAD_RUNTIME)) != 0) {
+            throw new IllegalArgumentException("Unknown gun asset load request");
+        }
+        if ((requests & LOAD_RUNTIME) != 0) requests |= LOAD_MODEL;
+        List<CompletableFuture<Void>> tasks = new ArrayList<>(3);
+        synchronized (warmUpLock) {
+            if ((requests & LOAD_MODEL) != 0) tasks.add(reloadCompletion(LOAD_MODEL, scheduleModelWarmUpLocked()));
+            if ((requests & LOAD_LOD) != 0) tasks.add(reloadCompletion(LOAD_LOD, scheduleLodWarmUpLocked()));
+            if ((requests & LOAD_RUNTIME) != 0) tasks.add(reloadCompletion(LOAD_RUNTIME, scheduleAnimationWarmUpLocked()));
+        }
+        return List.copyOf(tasks);
+    }
+
+    private CompletableFuture<Void> reloadCompletion(int stage, CompletableFuture<Void> task) {
+        // The observer must neither cancel shared work nor mistake a skipped/failed task for readiness.
+        return task.thenRun(() -> {
+            if (invalidated) throw new CancellationException("Gun display was invalidated: " + displayId);
+            boolean ready = switch (stage) {
+                case LOAD_MODEL -> modelLoaded;
+                case LOAD_LOD -> lodLoaded;
+                case LOAD_RUNTIME -> animationLoaded;
+                default -> false;
+            };
+            if (!ready) throw new IllegalStateException("Gun asset stage " + stage + " is not ready: " + displayId);
+            if (stage == LOAD_MODEL && gltfBodyLoadFailure != null) throw new CompletionException(gltfBodyLoadFailure);
+            if (invalidated) throw new CancellationException("Gun display was invalidated: " + displayId);
+        });
+    }
+
     // 后台预热
+    public void invalidate() {
+        // Never wait for loadLock here: a background decode may hold it while the render thread applies settings.
+        invalidated = true;
+        if (modelWarmUpTask != null) modelWarmUpTask.cancel(false);
+        if (lodWarmUpTask != null) lodWarmUpTask.cancel(false);
+        if (animationWarmUpTask != null) animationWarmUpTask.cancel(false);
+    }
+
     public void warmUpModel() {
-        if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
+        if (invalidated) return;
+        if (!forceAsync && !ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
             ensureModelLoaded();
             return;
         }
-        if (modelLoaded || modelWarmUpTask != null) {
+        if (modelLoaded || modelLoadFailed || modelWarmUpTask != null) {
             return;
         }
-        synchronized (loadLock) {
-            if (modelLoaded || modelWarmUpTask != null) {
+        synchronized (warmUpLock) {
+            if (invalidated || modelLoaded || modelLoadFailed || modelWarmUpTask != null) {
                 return;
             }
             scheduleModelWarmUpLocked();
@@ -133,44 +231,42 @@ public class GunDisplayInstance {
     }
 
     public void warmUpLod() {
-        if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
+        if (invalidated) return;
+        if (!forceAsync && !ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
             ensureLodLoaded();
             return;
         }
-        if (lodLoaded || lodWarmUpTask != null) {
+        if (lodLoaded || lodLoadFailed || lodWarmUpTask != null) {
             return;
         }
-        synchronized (loadLock) {
-            if (lodLoaded || lodWarmUpTask != null) {
+        synchronized (warmUpLock) {
+            if (invalidated || lodLoaded || lodLoadFailed || lodWarmUpTask != null) {
                 return;
             }
-            lodWarmUpTask = CompletableFuture.runAsync(this::loadLodIfNecessary, ClientAssetLoadDispatcher.executor());
-            lodWarmUpTask.whenComplete((unused, throwable) -> {
-                if (throwable != null) {
-                    handleLodLoadFailure(throwable);
-                }
-            });
+            scheduleLodWarmUpLocked();
         }
     }
 
     public void warmUpRuntime() {
-        if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
+        if (invalidated) return;
+        if (!forceAsync && !ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
             ensureAnimationLoaded();
             return;
         }
-        if (animationLoaded || animationWarmUpTask != null) {
+        if (animationLoaded || animationLoadFailed || modelLoadFailed || animationWarmUpTask != null) {
             return;
         }
-        synchronized (loadLock) {
-            if (animationLoaded || animationWarmUpTask != null) {
+        synchronized (warmUpLock) {
+            if (invalidated || animationLoaded || animationLoadFailed || modelLoadFailed || animationWarmUpTask != null) {
                 return;
             }
             scheduleAnimationWarmUpLocked();
         }
     }
 
-    // 确保所需资源完成，没完成阻塞一下
+    // Synchronous loading is reserved for explicitly disabled lazy loading.
     private void ensureModelLoaded() {
+        if (invalidated) return;
         if (modelLoaded || modelLoadFailed) {
             return;
         }
@@ -185,12 +281,13 @@ public class GunDisplayInstance {
         }
         try {
             task.join();
-        } catch (CompletionException exception) {
+        } catch (CompletionException | CancellationException exception) {
             handleModelLoadFailure(exception.getCause() == null ? exception : exception.getCause());
         }
     }
 
     private void ensureLodLoaded() {
+        if (invalidated) return;
         if (lodLoaded || lodLoadFailed) {
             return;
         }
@@ -205,18 +302,19 @@ public class GunDisplayInstance {
         }
         try {
             task.join();
-        } catch (CompletionException exception) {
+        } catch (CompletionException | CancellationException exception) {
             handleLodLoadFailure(exception.getCause() == null ? exception : exception.getCause());
         }
     }
 
     private void ensureAnimationLoaded() {
+        if (invalidated) return;
         if (animationLoaded || animationLoadFailed) {
             return;
         }
         ensureModelLoaded();
         if (!modelLoaded) {
-            animationLoadFailed = true;
+            if (!invalidated && modelLoadFailed) animationLoadFailed = true;
             return;
         }
         CompletableFuture<Void> task = animationWarmUpTask;
@@ -230,91 +328,114 @@ public class GunDisplayInstance {
         }
         try {
             task.join();
-        } catch (CompletionException exception) {
+        } catch (CompletionException | CancellationException exception) {
             handleAnimationLoadFailure(exception.getCause() == null ? exception : exception.getCause());
         }
     }
 
     // 加载任务
     private void loadModelIfNecessary() {
-        if (modelLoaded) {
+        if (modelLoaded || modelLoadFailed || invalidated) {
             return;
         }
         synchronized (loadLock) {
-            if (modelLoaded) {
+            if (modelLoaded || modelLoadFailed || invalidated) {
                 return;
             }
             checkTextureAndModel(display);
+            if (invalidated) return;
             checkTextShow(display);
+            if (invalidated) return;
             modelLoaded = true;
         }
     }
 
     private void loadLodIfNecessary() {
-        if (lodLoaded) {
+        if (lodLoaded || lodLoadFailed || invalidated) {
             return;
         }
         synchronized (loadLock) {
-            if (lodLoaded) {
+            if (lodLoaded || lodLoadFailed || invalidated) {
                 return;
             }
             checkLod(display);
+            if (invalidated) return;
             lodLoaded = true;
         }
     }
 
     private CompletableFuture<Void> scheduleModelWarmUpLocked() {
-        if (modelLoaded) {
+        if (invalidated || modelLoaded || modelLoadFailed) {
             return CompletableFuture.completedFuture(null);
         }
-        if (modelWarmUpTask == null) {
-            modelWarmUpTask = CompletableFuture.runAsync(this::loadModelIfNecessary, ClientAssetLoadDispatcher.executor());
-            modelWarmUpTask.whenComplete((unused, throwable) -> {
+        CompletableFuture<Void> task = modelWarmUpTask;
+        if (task == null) {
+            task = CompletableFuture.runAsync(this::loadModelIfNecessary, ClientAssetLoadDispatcher.executor());
+            modelWarmUpTask = task;
+            task.whenComplete((unused, throwable) -> {
                 if (throwable != null) {
                     handleModelLoadFailure(throwable);
                 }
             });
         }
-        return modelWarmUpTask;
+        // An already-failed task may clear its field during whenComplete registration.
+        return task;
+    }
+
+    private CompletableFuture<Void> scheduleLodWarmUpLocked() {
+        if (invalidated || lodLoaded || lodLoadFailed) return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> task = lodWarmUpTask;
+        if (task == null) {
+            task = CompletableFuture.runAsync(this::loadLodIfNecessary, ClientAssetLoadDispatcher.executor());
+            lodWarmUpTask = task;
+            task.whenComplete((unused, throwable) -> {
+                if (throwable != null) handleLodLoadFailure(throwable);
+            });
+        }
+        return task;
     }
 
     private CompletableFuture<Void> scheduleAnimationWarmUpLocked() {
-        if (animationLoaded) {
+        if (invalidated || animationLoaded || animationLoadFailed || modelLoadFailed) {
             return CompletableFuture.completedFuture(null);
         }
-        if (animationWarmUpTask == null) {
+        CompletableFuture<Void> task = animationWarmUpTask;
+        if (task == null) {
             // 动画任务尝试挂到模型加载后面
             CompletableFuture<Void> modelTask = scheduleModelWarmUpLocked();
-            animationWarmUpTask = modelTask.thenRunAsync(this::loadAnimationAfterModelReady, ClientAssetLoadDispatcher.executor());
-            animationWarmUpTask.whenComplete((unused, throwable) -> {
+            task = modelTask.thenRunAsync(this::loadAnimationAfterModelReady, ClientAssetLoadDispatcher.executor());
+            animationWarmUpTask = task;
+            task.whenComplete((unused, throwable) -> {
                 if (throwable != null) {
                     handleAnimationLoadFailure(throwable);
                 }
             });
         }
-        return animationWarmUpTask;
+        return task;
     }
 
     private void loadAnimationAfterModelReady() {
-        if (animationLoaded) {
+        if (animationLoaded || animationLoadFailed || invalidated) {
             return;
         }
         synchronized (loadLock) {
-            if (animationLoaded) {
+            if (animationLoaded || animationLoadFailed || invalidated) {
                 return;
             }
             if (!modelLoaded) {
                 throw new IllegalStateException("Gun animation requires model to be loaded first");
             }
             checkAnimation(display);
+            if (invalidated) return;
             animationLoaded = true;
         }
     }
 
     private void handleModelLoadFailure(Throwable throwable) {
+        if (invalidated) return;
         boolean shouldLog = false;
-        synchronized (loadLock) {
-            if (!modelLoaded) {
+        synchronized (warmUpLock) {
+            if (!invalidated && !modelLoaded) {
                 shouldLog = !modelLoadFailed;
                 modelWarmUpTask = null;
                 modelLoadFailed = true;
@@ -326,9 +447,10 @@ public class GunDisplayInstance {
     }
 
     private void handleLodLoadFailure(Throwable throwable) {
+        if (invalidated) return;
         boolean shouldLog = false;
-        synchronized (loadLock) {
-            if (!lodLoaded) {
+        synchronized (warmUpLock) {
+            if (!invalidated && !lodLoaded) {
                 shouldLog = !lodLoadFailed;
                 lodWarmUpTask = null;
                 lodLoadFailed = true;
@@ -340,9 +462,10 @@ public class GunDisplayInstance {
     }
 
     private void handleAnimationLoadFailure(Throwable throwable) {
+        if (invalidated) return;
         boolean shouldLog = false;
-        synchronized (loadLock) {
-            if (!animationLoaded) {
+        synchronized (warmUpLock) {
+            if (!invalidated && !animationLoaded) {
                 shouldLog = !animationLoadFailed;
                 animationWarmUpTask = null;
                 animationLoadFailed = true;
@@ -426,9 +549,51 @@ public class GunDisplayInstance {
             gunModel = constructor.apply(modelPOJO, BedrockVersion.NEW);
         }
         Preconditions.checkArgument(gunModel != null, "there is no model data in the model file");
+        tryAttachGltfBody(display.getRenderModel(), textShowNodeNames(display));
+    }
+
+    private void tryAttachGltfBody(
+            @Nullable GunRenderModelConfig config,
+            Set<String> additionalProtectedSources
+    ) {
+        if (config == null) {
+            return;
+        }
+        try {
+            config.validate();
+            if (!config.isGltf()) {
+                return;
+            }
+
+            var renderer = GltfRenderModelLoader.load(config, gunModel, additionalProtectedSources, () -> invalidated);
+            if (!invalidated && renderer != null) gunModel.setBodyRenderer(renderer);
+        } catch (Exception exception) {
+            if (invalidated) return;
+            gltfBodyLoadFailure = exception;
+            GunMod.LOGGER.warn(
+                    "Failed to load declared mesh gun body for {}; placeholder body will not be rendered",
+                    displayId,
+                    exception
+            );
+        }
+    }
+
+    private static Set<String> textShowNodeNames(GunDisplay display) {
+        Map<String, TextShow> textShows = display.getTextShows();
+        if (textShows == null || textShows.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> nodeNames = new HashSet<>();
+        for (String nodeName : textShows.keySet()) {
+            if (StringUtils.isNoneBlank(nodeName)) {
+                nodeNames.add(nodeName);
+            }
+        }
+        return Set.copyOf(nodeNames);
     }
 
     private void checkLod(GunDisplay display) {
+        if (usesMeshRenderModel()) return;
         GunLod gunLod = display.getGunLod();
         if (gunLod != null) {
             Identifier texture = gunLod.getModelTexture();
@@ -604,7 +769,7 @@ public class GunDisplayInstance {
             try {
                 String name = particle.getName();
                 if (StringUtils.isNoneBlank()) {
-                    particle.setParticleOptions(ParticleArgument.readParticle(new StringReader(name), BUILTIN_PARTICLE_LOOKUP));
+                    particle.setParticleOptions(ParticleArgument.readParticle(new StringReader(name), ParticleLookupHolder.VALUE));
                     Preconditions.checkArgument(particle.getCount() > 0, "particle count must be greater than 0");
                     Preconditions.checkArgument(particle.getLifeTime() > 0, "particle life time must be greater than 0");
                     this.particle = particle;
@@ -642,24 +807,53 @@ public class GunDisplayInstance {
     }
 
     public @Nullable BedrockGunModel getGunModel() {
-        ensureModelLoaded();
-        return gunModel;
+        if (invalidated) return null;
+        warmUpModel();
+        // The volatile ready flag publishes every field written by the background loader.
+        return readyGunModel();
+    }
+
+    public boolean usesMeshRenderModel() {
+        return display.getRenderModel() != null && display.getRenderModel().isGltf();
+    }
+
+    private @Nullable BedrockGunModel readyGunModel() {
+        if (!modelLoaded || invalidated) return null;
+        return usesMeshRenderModel() && (gltfBodyLoadFailure != null || !gunModel.hasCustomBodyRenderer())
+                ? null : gunModel;
+    }
+
+    /** Atlas identity never owns the model; only the current extraction snapshot may hold it. */
+    public record GuiModelSnapshot(Object pendingIdentity, @Nullable BedrockGunModel model,
+                                   Identifier slotTexture, boolean meshRequested) { }
+
+    public GuiModelSnapshot guiModelSnapshot() {
+        boolean mesh = usesMeshRenderModel();
+        if (mesh && !invalidated) {
+            // GUI extraction must not synchronously decode even when ordinary lazy loading is disabled.
+            synchronized (warmUpLock) { scheduleModelWarmUpLocked(); }
+        }
+        return new GuiModelSnapshot(guiPendingIdentity, mesh ? readyGunModel() : null,
+                mesh ? MissingTextureAtlasSprite.getLocation() : slotTexture, mesh);
     }
 
     @Nullable
     public Pair<BedrockGunModel, Identifier> getLodModel() {
-        ensureLodLoaded();
-        return lodModel;
+        if (invalidated || usesMeshRenderModel()) return null;
+        warmUpLod();
+        return lodLoaded && !invalidated ? lodModel : null;
     }
 
     public @Nullable LuaAnimationStateMachine<GunAnimationStateContext> getAnimationStateMachine() {
-        ensureAnimationLoaded();
-        return animationStateMachine;
+        if (invalidated) return null;
+        warmUpRuntime();
+        return animationLoaded && !invalidated ? animationStateMachine : null;
     }
 
     public @Nullable LuaTable getStateMachineParam() {
-        ensureAnimationLoaded();
-        return stateMachineParam;
+        if (invalidated) return null;
+        warmUpRuntime();
+        return animationLoaded && !invalidated ? stateMachineParam : null;
     }
 
     @Nullable
@@ -689,8 +883,10 @@ public class GunDisplayInstance {
     }
 
     public Identifier getModelTexture() {
-        ensureModelLoaded();
-        return modelTexture != null ? modelTexture : MissingTextureAtlasSprite.getLocation();
+        if (invalidated) return MissingTextureAtlasSprite.getLocation();
+        warmUpModel();
+        return modelLoaded && !invalidated && modelTexture != null
+                ? modelTexture : MissingTextureAtlasSprite.getLocation();
     }
 
     public String getThirdPersonAnimation() {

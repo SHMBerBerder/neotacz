@@ -20,6 +20,9 @@ public class GunDisplay implements IDisplay {
     private Identifier modelLocation;
     @SerializedName("texture")
     private Identifier modelTexture;
+    @Nullable
+    @SerializedName("render_model")
+    private GunRenderModelConfig renderModel;
     @SerializedName("iron_zoom")
     private float ironZoom = 1.2f;
     @SerializedName("zoom_model_fov")
@@ -115,6 +118,11 @@ public class GunDisplay implements IDisplay {
 
     public Identifier getModelTexture() {
         return modelTexture;
+    }
+
+    @Nullable
+    public GunRenderModelConfig getRenderModel() {
+        return renderModel;
     }
 
     @Nullable

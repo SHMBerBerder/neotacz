@@ -2,13 +2,16 @@ package com.tacz.guns.client.resource;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.client.animation.gltf.AnimationStructure;
 import com.tacz.guns.api.vmlib.LuaAnimationConstant;
 import com.tacz.guns.api.vmlib.LuaGunAnimationConstant;
 import com.tacz.guns.api.vmlib.LuaLibrary;
+import com.tacz.guns.client.model.gltf.render.GltfGunBodyRenderer;
 import com.tacz.guns.client.resource.manager.DisplayManager;
 import com.tacz.guns.client.resource.manager.GltfManager;
+import com.tacz.guns.client.resource.manager.GltfModelManager;
 import com.tacz.guns.client.resource.manager.PackInfoManager;
 import com.tacz.guns.client.resource.pojo.CommonTransformObject;
 import com.tacz.guns.client.resource.pojo.PackInfo;
@@ -81,6 +84,8 @@ public enum ClientAssetsManager {
     private LazyJsonDataManager<BedrockAnimationFile> bedrockAnimation;
     // gltf 动画
     private GltfManager gltfAnimation;
+    // glTF 渲染模型
+    private GltfModelManager gltfModel;
     // 客户端脚本
     private final List<LuaLibrary> libList = List.of(new LuaAnimationConstant(), new LuaGunAnimationConstant());
     private ScriptManager scriptManager;
@@ -103,6 +108,8 @@ public enum ClientAssetsManager {
             bedrockAnimation = register("client/bedrock_animation", new LazyJsonDataManager<>(BedrockAnimationFile.class, GSON, new FileToIdConverter("animations", ".animation.json"),
                     "BedrockAnimationLoader", id -> GunMod.MOD_ID.equals(id.getNamespace())));
             gltfAnimation = register("client/gltf_animation", new GltfManager());
+            gltfModel = register("client/gltf_model", new GltfModelManager());
+            gltfModel.addDisposalHook(ClientAssetsManager::clearGltfRenderResources);
             scriptManager = register("client/scripts", new ScriptManager(new FileToIdConverter("scripts", ".lua"), libList));
             packInfo = register("client/pack_info", new PackInfoManager());
             register("client/index_reload", new SimplePreparableReloadListener<Void>() {
@@ -126,6 +133,15 @@ public enum ClientAssetsManager {
     }
 
     private record ReloadListenerEntry(Identifier id, PreparableReloadListener listener) {
+    }
+
+    private static void clearGltfRenderResources() {
+        if (RenderSystem.isOnRenderThread()) {
+            GltfGunBodyRenderer.clearTextureCache();
+        } else {
+            // Minecraft's client executor owns the render thread in 26.2.
+            Minecraft.getInstance().execute(GltfGunBodyRenderer::clearTextureCache);
+        }
     }
 
     @Nullable
@@ -174,6 +190,10 @@ public enum ClientAssetsManager {
     @Nullable
     public AnimationStructure getGltfAnimation(Identifier id) {
         return gltfAnimation.getGltfAnimation(id);
+    }
+
+    public GltfModelManager getGltfModelManager() {
+        return gltfModel;
     }
 
     @Nullable

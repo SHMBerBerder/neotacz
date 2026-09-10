@@ -1,0 +1,35 @@
+gradle.projectsEvaluated {
+    gradle.rootProject.with { project ->
+        def toolDirectory = file('tools/calibration')
+        def classes = layout.buildDirectory.dir('calibration/classes')
+        def compiler = tasks.named('compileJava', JavaCompile).get().javaCompiler
+        def compileTool = tasks.register('compileCalibrationTool', JavaCompile) {
+            dependsOn tasks.named('classes')
+            javaCompiler = compiler
+            source project.fileTree(toolDirectory) { include '*.java' }
+            classpath = project.sourceSets.main.output + project.sourceSets.main.compileClasspath
+            destinationDirectory = classes
+            options.encoding = 'UTF-8'
+        }
+        ['calibrateAsset': 'AssetCalibrationBaker', 'testCalibrationTool': 'CalibrationSelfTest'].each { taskName, entry ->
+            tasks.register(taskName, JavaExec) {
+                dependsOn compileTool
+                executable = compiler.get().metadata.installationPath.file('bin/java').asFile.absolutePath
+                classpath = files(classes) + project.sourceSets.main.runtimeClasspath
+                mainClass = 'com.tacz.guns.client.model.gltf.render.' + entry
+                maxHeapSize = '4G'
+                if (taskName == 'calibrateAsset') {
+                    doFirst {
+                        if (!project.hasProperty('calibrationProfile') || !project.hasProperty('calibrationOutput')) {
+                            throw new GradleException('Set -PcalibrationProfile=<json> and -PcalibrationOutput=<directory>')
+                        }
+                        args project.file(project.property('calibrationProfile')).absolutePath,
+                                project.file(project.property('calibrationOutput')).absolutePath
+                        args project.findProperty('calibrationMaxEncodedImageMiB') ?: '16',
+                                project.findProperty('calibrationMaxModelImagesMiB') ?: '64'
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,57 @@
+gradle.projectsEvaluated {
+    gradle.rootProject.with { project ->
+        def output = layout.buildDirectory.dir('gunpack-tool/classes')
+        def compiler = tasks.named('compileJava', JavaCompile).get().javaCompiler
+        def compileTool = tasks.register('compileMeshGunpackTool', JavaCompile) {
+            dependsOn tasks.named('classes')
+            javaCompiler = compiler
+            source project.fileTree('tools/gunpack') { include '*.java' }
+            classpath = project.sourceSets.main.output + project.sourceSets.main.compileClasspath
+            destinationDirectory = output
+            options.encoding = 'UTF-8'
+        }
+        tasks.register('preparePublicMeshPack') {
+            dependsOn compileTool
+            def classpathFile = layout.buildDirectory.file('gunpack-tool/runtime-classpath.txt')
+            outputs.file(classpathFile)
+            outputs.upToDateWhen { false }
+            doLast {
+                // Absolute dependency paths belong only in this machine's ignored build directory.
+                def target = classpathFile.get().asFile
+                target.parentFile.mkdirs()
+                target.setText(project.sourceSets.main.runtimeClasspath.asPath, 'UTF-8')
+            }
+        }
+        ['buildMeshGunpack': 'build', 'validateMeshGunpack': 'validate', 'testMeshGunpackTool': 'test'].each { taskName, command ->
+            tasks.register(taskName, JavaExec) {
+                dependsOn compileTool
+                executable = compiler.get().metadata.installationPath.file('bin/java').asFile.absolutePath
+                classpath = files(output) + project.sourceSets.main.runtimeClasspath
+                mainClass = command == 'test' ? 'com.tacz.guns.tools.gunpack.MeshGunpackSelfTest' : 'com.tacz.guns.tools.gunpack.MeshGunpackTool'
+                maxHeapSize = '1G'
+                doFirst {
+                    if (command == 'test') {
+                        args project.rootDir.absolutePath
+                    } else {
+                        args command, project.rootDir.absolutePath,
+                                project.file(project.findProperty('meshPack') ?: 'build/gunpacks/bolt_action_mesh-1.0.0-local.zip').absolutePath
+                        if (command == 'build') {
+                            args project.file(project.findProperty('meshSource') ?: '/tmp/neotacz-bolt-action-8k-adapted').absolutePath,
+                                    project.file(project.findProperty('meshBaked') ?: 'run/bolt-calibration-evidence/baked').absolutePath
+                            if (project.hasProperty('meshAsset') != project.hasProperty('meshAssetProvenance')) {
+                                throw new GradleException('meshAsset and meshAssetProvenance must be supplied together')
+                            }
+                            if (project.hasProperty('meshAsset')) {
+                                args project.file(project.property('meshAsset')).absolutePath,
+                                        project.file(project.property('meshAssetProvenance')).absolutePath
+                            }
+                        }
+                        if (command == 'validate' && project.hasProperty('meshDefaultPack')) {
+                            args project.file(project.property('meshDefaultPack')).absolutePath
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

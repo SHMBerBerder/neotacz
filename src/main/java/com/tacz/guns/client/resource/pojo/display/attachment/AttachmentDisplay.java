@@ -4,6 +4,7 @@ import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
 import com.tacz.guns.client.resource.pojo.display.IDisplay;
 import com.tacz.guns.client.resource.pojo.display.LaserConfig;
+import com.tacz.guns.client.resource.pojo.display.gun.GunRenderModelConfig;
 import com.tacz.guns.client.resource.pojo.display.gun.TextShow;
 import net.minecraft.resources.Identifier;
 
@@ -22,6 +23,10 @@ public class AttachmentDisplay implements IDisplay {
 
     @SerializedName("texture")
     private Identifier texture;
+
+    @Nullable
+    @SerializedName("render_model")
+    private GunRenderModelConfig renderModel;
 
     @SerializedName("lod")
     @Nullable
@@ -74,6 +79,11 @@ public class AttachmentDisplay implements IDisplay {
 
     public Identifier getTexture() {
         return texture;
+    }
+
+    @Nullable
+    public GunRenderModelConfig getRenderModel() {
+        return renderModel;
     }
 
     @Nullable
@@ -136,6 +146,12 @@ public class AttachmentDisplay implements IDisplay {
 
     @Override
     public void init() {
+        if (renderModel != null) {
+            renderModel.validate();
+            if (!renderModel.getNodeMap().isEmpty()) {
+                throw new IllegalArgumentException("Attachment render_model.node_map is not supported");
+            }
+        }
         if (slotTextureLocation != null) {
             slotTextureLocation = converter.idToFile(slotTextureLocation);
         }

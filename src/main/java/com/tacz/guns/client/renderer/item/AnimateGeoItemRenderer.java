@@ -38,6 +38,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * 抽象的基岩版动画物品模型BEWLR，包含一些默认实现
@@ -100,9 +101,13 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
      * 尝试初始化状态机并触发切入信号
      */
     public void tryInit(ItemStack stack, Player player, float partialTick) {
+        tryInit(stack, player, partialTick, () -> true);
+    }
+
+    private boolean tryInit(ItemStack stack, Player player, float partialTick, BooleanSupplier allowed) {
         var stateMachine = getStateMachine(stack);
-        if (stateMachine == null) {
-            return;
+        if (stateMachine == null || !allowed.getAsBoolean()) {
+            return false;
         }
         if (stateMachine.isInitialized()) {
             stateMachine.exit();
@@ -111,7 +116,13 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
         stateMachine.setContext(initContext(stack, player, partialTick));
         stateMachine.initialize();
 
+        // Initialization callbacks can retire this draw; do not dispatch an action to the stale machine.
+        if (!allowed.getAsBoolean() || getStateMachine(stack) != stateMachine || !stateMachine.isInitialized()) {
+            if (stateMachine.isInitialized()) stateMachine.exit();
+            return false;
+        }
         stateMachine.trigger(GunAnimationConstant.INPUT_DRAW);
+        return true;
     }
 
     /**
@@ -299,10 +310,32 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
     }
 
     @Nullable
+    Player animationPlayer() {
+        return Minecraft.getInstance().player;
+    }
+
+    void playDrawSound(ItemStack stack, @Nullable Player player) {
+        if (player == null) return;
+        TimelessAPI.getGunDisplay(stack).ifPresent(display -> {
+            SoundPlayManager.stopPlayGunSound();
+            SoundPlayManager.playDrawSound(player, display);
+        });
+    }
+
+    void playPutAwaySound(ItemStack stack, @Nullable Player player) {
+        if (player == null) return;
+        TimelessAPI.getGunDisplay(stack).ifPresent(display -> {
+            SoundPlayManager.stopPlayGunSound();
+            SoundPlayManager.playPutAwaySound(player, display);
+        });
+    }
+
+    @Nullable
     @Override
     public IFPAnimationInstance createAnimationInstance(ItemStack stack, Entity entity) {
         return new IFPAnimationInstance() {
             private boolean drawn = false;
+            private boolean putAwayStarted = false;
             private ItemStack lastItem = stack;
 
             @Override
@@ -342,24 +375,24 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
 
             @Override
             public void triggerDraw() {
-                if (drawn) return;
+                if (drawn || putAwayStarted) return;
+                var current = getStateMachine(lastItem);
+                // A pending runtime must leave this draw attempt available for the next frame.
+                if (current == null) return;
+                Player player = animationPlayer();
+                if (!tryInit(lastItem, player, 0,
+                        () -> !putAwayStarted && getStateMachine(lastItem) == current)) return;
+                if (putAwayStarted || getStateMachine(lastItem) != current || !current.isInitialized()) return;
                 drawn = true;
-                tryInit(lastItem, Minecraft.getInstance().player, 0);
-                if (Minecraft.getInstance().player == null) return;
-                TimelessAPI.getGunDisplay(lastItem).ifPresent(display -> {
-                    SoundPlayManager.stopPlayGunSound();
-                    SoundPlayManager.playDrawSound(Minecraft.getInstance().player, display);
-                });
+                playDrawSound(lastItem, player);
             }
 
             @Override
             public void triggerPutAway() {
+                // The handler still ticks this instance while putting it away, but draws a fresh instance afterward.
+                putAwayStarted = true;
                 tryExit(lastItem, getPutAwayTime(lastItem));
-                if (Minecraft.getInstance().player == null) return;
-                TimelessAPI.getGunDisplay(lastItem).ifPresent(display -> {
-                    SoundPlayManager.stopPlayGunSound();
-                    SoundPlayManager.playPutAwaySound(Minecraft.getInstance().player, display);
-                });
+                playPutAwaySound(lastItem, animationPlayer());
             }
         };
     }

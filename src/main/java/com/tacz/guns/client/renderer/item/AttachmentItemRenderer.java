@@ -6,6 +6,7 @@ import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.SlotModel;
+import com.tacz.guns.client.model.gltf.render.GltfGuiIconRenderer;
 import com.tacz.guns.client.renderer.BedrockSubmitUtils;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import com.tacz.guns.util.RenderDistance;
@@ -30,6 +31,19 @@ public class AttachmentItemRenderer {
             Identifier attachmentId = iAttachment.getAttachmentId(stack);
             poseStack.pushPose();
             TimelessAPI.getClientAttachmentIndex(attachmentId).ifPresentOrElse(attachmentIndex -> {
+                if (attachmentIndex.usesMeshRenderModel()) {
+                    if (transformType == ItemDisplayContext.GUI) {
+                        submitGuiIcon(GltfGuiIconRenderer.captureAttachment(attachmentIndex.guiMeshSnapshot()),
+                                poseStack, submitNodeCollector, pPackedLight, pPackedOverlay);
+                    } else {
+                        var renderer = attachmentIndex.getMeshRenderer();
+                        if (renderer != null) {
+                            applyMeshItemTransform(transformType, poseStack);
+                            renderer.submitAttachment(poseStack, transformType, submitNodeCollector, pPackedLight, pPackedOverlay);
+                        }
+                    }
+                    return;
+                }
                 if (transformType == ItemDisplayContext.GUI) {
                     submitSlotTexture(poseStack, submitNodeCollector, pPackedLight, pPackedOverlay, attachmentIndex.getSlotTexture());
                     return;
@@ -42,6 +56,27 @@ public class AttachmentItemRenderer {
                 this.submitDefaultAttachment(transformType, poseStack, submitNodeCollector, pPackedLight, pPackedOverlay, attachmentIndex);
             }, () -> submitSlotTexture(poseStack, submitNodeCollector, pPackedLight, pPackedOverlay, MissingTextureAtlasSprite.getLocation()));
             poseStack.popPose();
+        }
+    }
+
+    public void submitGuiIcon(GltfGuiIconRenderer.Snapshot snapshot, PoseStack poseStack,
+                              SubmitNodeCollector collector, int light, int overlay) {
+        poseStack.pushPose();
+        try {
+            if (!GltfGuiIconRenderer.submit(snapshot, poseStack, collector, light, overlay)) {
+                submitSlotTexture(poseStack, collector, light, overlay, snapshot.fallbackTexture());
+            }
+        } finally {
+            poseStack.popPose();
+        }
+    }
+
+    static void applyMeshItemTransform(ItemDisplayContext transformType, PoseStack poseStack) {
+        poseStack.translate(0.5, 0.5, 0.5);
+        // The shared mounted renderer consumes the Bedrock XY basis, not its legacy Y offset.
+        poseStack.scale(-1, -1, 1);
+        if (transformType == ItemDisplayContext.FIXED) {
+            poseStack.mulPose(Axis.YN.rotationDegrees(90));
         }
     }
 

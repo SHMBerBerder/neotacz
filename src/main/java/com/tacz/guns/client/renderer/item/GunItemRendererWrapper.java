@@ -15,6 +15,7 @@ import com.tacz.guns.client.event.CameraSetupEvent;
 import com.tacz.guns.client.event.FirstPersonRenderGunEvent;
 import com.tacz.guns.client.model.BedrockGunModel;
 import com.tacz.guns.client.model.SlotModel;
+import com.tacz.guns.client.model.gltf.render.GltfGuiIconRenderer;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import com.tacz.guns.client.model.functional.MuzzleFlashRender;
 import com.tacz.guns.client.model.functional.ShellRender;
@@ -297,7 +298,13 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
                     FIRST_PERSON_GUN_BODY_ORDER,
                     handSway,
                     finalRenderHandForCallback);
-            if (!scopeStencilPassSubmitted) {
+            boolean[] customBodySubmitted = {false};
+            if (!scopeStencilPassSubmitted && gunModel.hasCustomBodyRenderer()) {
+                handSway.withTemporaryModelSway(rootNode, () -> customBodySubmitted[0] = gunModel.submitCustomBody(
+                        submitNodeCollector.order(FIRST_PERSON_GUN_BODY_ORDER), poseStack, stack, ctx,
+                        light, OverlayTexture.NO_OVERLAY));
+            }
+            if (!scopeStencilPassSubmitted && !customBodySubmitted[0] && !display.usesMeshRenderModel()) {
                 submitFirstPersonGunBodyGeometry(submitNodeCollector, poseStack, baseRenderType, (callbackPoseStack, buffer) -> {
                     boolean callbackPreviousRenderHand = gunModel.getRenderHand();
                     gunModel.setRenderHand(finalRenderHandForCallback);
@@ -319,6 +326,9 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             // 缓存枪口位置，为第一人称曳光弹渲染作准备
             handSway.withTemporaryModelSway(rootNode, () ->
                     cacheMuzzlePosition(poseStack, gunModel, player.getId(), iGun.getGunId(stack), iGun.getGunDisplayId(stack)));
+            if (customBodySubmitted[0]) {
+                gunModel.cleanAnimationTransform();
+            }
             poseStack.popPose();
         }, GunItemRendererWrapper::clearMuzzleRenderOffset);
     }
@@ -411,13 +421,14 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
                 return;
             }
             if (transformType == GUI) {
-                submitSlotTexture(poseStack, submitNodeCollector, packedLight, packedOverlay, gunIndex.getSlotTexture());
+                submitGuiIcon(GltfGuiIconRenderer.capture(stack), poseStack, submitNodeCollector, packedLight, packedOverlay);
                 return;
             }
 
             BedrockGunModel gunModel;
             Identifier gunTexture;
-            Pair<BedrockGunModel, Identifier> lodModel = gunIndex.getLodModel();
+            // Legacy Bedrock LOD describes a different body, not an alternative mesh quality.
+            Pair<BedrockGunModel, Identifier> lodModel = gunIndex.usesMeshRenderModel() ? null : gunIndex.getLodModel();
             if (lodModel == null || RenderDistance.inRenderHighPolyModelDistance(poseStack)) {
                 gunModel = gunIndex.getGunModel();
                 gunTexture = gunIndex.getModelTexture();
@@ -426,7 +437,9 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
                 gunTexture = lodModel.getRight();
             }
             if (gunModel == null) {
-                submitSlotTexture(poseStack, submitNodeCollector, packedLight, packedOverlay, gunIndex.getSlotTexture());
+                if (!gunIndex.usesMeshRenderModel()) {
+                    submitSlotTexture(poseStack, submitNodeCollector, packedLight, packedOverlay, gunIndex.getSlotTexture());
+                }
                 return;
             }
 
@@ -441,12 +454,28 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
                     RenderHelper.withDeferredFunctionalRendererCollection(() ->
                             gunModel.collectDeferredFunctionalRenderers(poseStack, stack, transformType, packedLight, packedOverlay)));
-            submitModelGeometry(submitNodeCollector, poseStack, renderType, (callbackPoseStack, buffer) ->
-                    RenderHelper.withDeferredRenderersSuppressed(() ->
-                            RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
-                                    gunModel.renderToBuffer(callbackPoseStack, stack, transformType, buffer, packedLight, packedOverlay))));
+            boolean customBodySubmitted = gunModel.submitCustomBody(
+                    submitNodeCollector, poseStack, stack, transformType, packedLight, packedOverlay);
+            if (!customBodySubmitted && !gunIndex.usesMeshRenderModel()) {
+                submitModelGeometry(submitNodeCollector, poseStack, renderType, (callbackPoseStack, buffer) ->
+                        RenderHelper.withDeferredRenderersSuppressed(() ->
+                                RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
+                                        gunModel.renderToBuffer(callbackPoseStack, stack, transformType, buffer, packedLight, packedOverlay))));
+            }
         }, () -> submitSlotTexture(poseStack, submitNodeCollector, packedLight, packedOverlay, MissingTextureAtlasSprite.getLocation()));
         poseStack.popPose();
+    }
+
+    public void submitGuiIcon(GltfGuiIconRenderer.Snapshot snapshot, PoseStack poseStack,
+                              SubmitNodeCollector collector, int light, int overlay) {
+        poseStack.pushPose();
+        try {
+            if (!GltfGuiIconRenderer.submit(snapshot, poseStack, collector, light, overlay)) {
+                submitSlotTexture(poseStack, collector, light, overlay, snapshot.fallbackTexture());
+            }
+        } finally {
+            poseStack.popPose();
+        }
     }
 
     private static void submitSlotTexture(PoseStack poseStack, SubmitNodeCollector submitNodeCollector, int packedLight, int packedOverlay, Identifier texture) {

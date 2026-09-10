@@ -19,6 +19,11 @@ final class TooltipIconRenderer {
     }
 
     static boolean drawSlotIcon(GuiGraphicsExtractor graphics, ItemStack stack, int x, int y) {
+        if (stack.getItem() instanceof IGun && TimelessAPI.getGunDisplay(stack)
+                .map(GunDisplayInstance::usesMeshRenderModel).orElse(false)) {
+            graphics.item(stack, x, y);
+            return true;
+        }
         Identifier texture = getSlotTexture(stack);
         if (texture == null) {
             return false;

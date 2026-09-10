@@ -130,20 +130,29 @@ public class GunHudOverlay implements GuiLayer {
         String modVersion = ModList.get().getModFileById(GunMod.MOD_ID).versionString();
         String debugInfo = String.format("%s-%s", minecraftVersion, modVersion);
 
-        // 获取图标
-        Identifier hudTexture = display.getHUDTexture();
-        @Nullable Identifier hudEmptyTexture = display.getHudEmptyTexture();
-        int hudColor = -1;
-
-        if (ammoCount <= 0 || overheatLocked) {
-            if (hudEmptyTexture == null) {
-                hudColor = ARGB.color(255, 255, 77, 77);
-            } else {
-                hudTexture = hudEmptyTexture;
+        if (display.usesMeshRenderModel()) {
+            var pose = graphics.pose();
+            pose.pushMatrix();
+            try {
+                pose.translate(width - 104, height - 44);
+                pose.scale(13f / 16f, 13f / 16f);
+                graphics.item(stack, 0, 0);
+            } finally {
+                pose.popMatrix();
             }
+        } else {
+            Identifier hudTexture = display.getHUDTexture();
+            @Nullable Identifier hudEmptyTexture = display.getHudEmptyTexture();
+            int hudColor = -1;
+            if (ammoCount <= 0 || overheatLocked) {
+                if (hudEmptyTexture == null) {
+                    hudColor = ARGB.color(255, 255, 77, 77);
+                } else {
+                    hudTexture = hudEmptyTexture;
+                }
+            }
+            graphics.blit(RenderPipelines.GUI_TEXTURED, hudTexture, width - 117, height - 44, 0, 0, 39, 13, 39, 13, hudColor);
         }
-        // 渲染枪械图标
-        graphics.blit(RenderPipelines.GUI_TEXTURED, hudTexture, width - 117, height - 44, 0, 0, 39, 13, 39, 13, hudColor);
 
         // 渲染开火模式图标
         FireMode fireMode = IGun.getMainHandFireMode(player);

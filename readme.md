@@ -18,6 +18,14 @@
 - 将 TACZ 代码和资源适配到 NeoForge/Minecraft 26.2
 - 本仓库产物仅代表此移植工程，不应被当作官方 TACZ 版本。
 
+## 更新与文档
+
+- [更新记录](CHANGELOG.md)
+- [视频设置与画质](docs/mesh-video-quality.md)
+- [独立 mesh 枪包格式](docs/mesh-gunpack-format.md)
+- [glTF 渲染支持范围](docs/gltf-rendering.md)
+- [公开高模与配件实测](docs/public-mesh-acceptance.md)
+
 ## 上游致谢
 
 本移植基于 Timeless and Classics Guns: Zero (TACZ)。原作者和贡献者保留其对应署名与许可权利。

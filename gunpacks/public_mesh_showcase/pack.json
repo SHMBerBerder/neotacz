@@ -1,0 +1,96 @@
+{
+  "namespace": "public_mesh_showcase",
+  "version": "1.0.0-local",
+  "mod_version": "1.1.8",
+  "source_files": {
+    "32989.glb": "3bfeda308020a4198f22141d3364053e82fcb8aa9bc84a09f6dc4ca4620c2608",
+    "32981.glb": "93c077227115829d2184a903c2f0c95069c422e0f917eb9bc4f1ef7de60d0d20",
+    "33034.glb": "abbbd85683645485c9111d646bdad02677e0d67dd1a21ca3e379cc208ca5bb7d",
+    "33029.glb": "5df15e8035f3ea734ca403d446806f0a157b3a91448f8cd8aeeb26f737226fff",
+    "mega-weapon-pack.json": "3ba7e31392282f4ee4d1e6fbf5e53ef1a85d8ad57f1cfa10a51e0bebad47352b",
+    "service_pistol.files.json": "5662344f9c81f75d1ea8a987db86b324c3bacf326cc1ebac7a796bb9438bdf9e",
+    "service_pistol/service_pistol_4k.gltf": "d5cbf64927cdd5b33eea37fcba023b12cab8e96eb2b2a889c4dc7594115286cb",
+    "service_pistol/service_pistol.bin": "a97b6d31ca8865384a76d31289017e25a326a67b3b254162b2a02ecbd97600bc",
+    "service_pistol/textures/service_pistol_diff_4k.jpg": "2794cee39dfdaa160bb9e325d1cd935fb1546c409f46356e4dcea71b15c0be4e",
+    "service_pistol/textures/service_pistol_arm_4k.jpg": "84a308510f1ba10098b73e4d0098dfdbf8a5f1e6d3ffe4e97533e82590522676",
+    "service_pistol/textures/service_pistol_nor_gl_4k.jpg": "51aab54bb1e57f8ea1f0113f213cc9126812ee7b7ca2a1c14b000e293df18e70"
+  },
+  "guns": [
+    {
+      "id": "chassis_sniper",
+      "name": "Chassis Bolt Sniper",
+      "source": "32989.glb",
+      "source_id": "32989",
+      "template": "m700",
+      "body_bone": "defualt_gun",
+      "retired_sound_effects": {"draw": ["spr208_inspect_xmags_up", "spr208_raise"]},
+      "rotation_y_degrees": 180,
+      "translation": [-0.0146, -0.184875, -0.625],
+      "triangles": 68188,
+      "sockets": {
+        "muzzle": [-0.0146, 0.263, 0.6101],
+        "grip": [-0.0146, 0.2263, 0.1802]
+      }
+    },
+    {
+      "id": "marksman_rifle",
+      "name": "Marksman Rifle",
+      "source": "32981.glb",
+      "source_id": "32981",
+      "template": "mk14",
+      "body_bone": "mk14",
+      "retired_sound_effects": {
+        "reload_tactical": ["p18_dm_mike14_reload_magout", "p18_dm_mike14_reload_maghit", "p18_dm_mike14_reload_magin", "p18_dm_mike14_reload_movemnt", "p18_dm_mike14_reload_end"],
+        "reload_empty": ["p18_dm_mike14_reload_empty_raise", "p18_dm_mike14_reload_empty_quick_magout", "p18_dm_mike14_reload_empty_maghit", "p18_dm_mike14_reload_empty_magin", "p18_dm_mike14_reload_empty_quick_charge", "p18_dm_mike14_reload_empty_end"]
+      },
+      "rotation_y_degrees": 180,
+      "translation": [0, -0.143259375, -0.625],
+      "triangles": 54172,
+      "sockets": {
+        "muzzle": [0, 0.2249, 0.4852],
+        "grip": [0, 0.1902, 0.1752]
+      }
+    },
+    {
+      "id": "service_pistol",
+      "name": "Service Pistol A",
+      "source": "service_pistol/service_pistol_4k.gltf",
+      "source_url": "https://polyhaven.com/a/service_pistol",
+      "author": "Mateusz Sadek / Poly Haven",
+      "license": "CC0 1.0 Universal",
+      "template": "glock_17",
+      "body_bone": "g17",
+      "retired_sound_effects": {"draw": ["p24_pi_golf17_stockskel_raise"]},
+      "rotation_y_degrees": 90,
+      "translation": [-0.0015625, 0.024375, -0.090625],
+      "triangles": 16650,
+      "selected_nodes": ["service_pistol_pistol_a", "service_pistol_slide_a", "service_pistol_magazine_loaded", "service_pistol_hammer_a", "service_pistol_trigger_a"],
+      "node_translation_overrides": {"service_pistol_magazine_loaded": [0, 0, 0]},
+      "sockets": {}
+    }
+  ],
+  "attachments": [
+    {
+      "id": "vertical_grip",
+      "name": "Vertical Fore Grip",
+      "source": "33034.glb",
+      "source_id": "33034",
+      "template": "grip_vertical_talon",
+      "type": "grip",
+      "rotation_y_degrees": 180,
+      "mount": [0, 0.124, 0],
+      "triangles": 8428
+    },
+    {
+      "id": "suppressor",
+      "name": "Rifle Suppressor",
+      "source": "33029.glb",
+      "source_id": "33029",
+      "template": "muzzle_silencer_vulture",
+      "type": "muzzle",
+      "rotation_y_degrees": 180,
+      "mount": [0, 0.0234, -0.112],
+      "triangles": 9840
+    }
+  ]
+}

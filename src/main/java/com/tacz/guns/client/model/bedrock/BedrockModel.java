@@ -26,6 +26,11 @@ public class BedrockModel {
      */
     protected final HashMap<String, BonesItem> indexBones = new HashMap<>();
     /**
+     * Counts names from the source bone list itself. This stays independent of modelMap,
+     * which animated models may pre-populate before the ordinary loader runs.
+     */
+    private final Map<String, Integer> originalNodeNameCounts = new HashMap<>();
+    /**
      * 哪些模型需要渲染。加载进父骨骼的子骨骼是不需要渲染的
      */
     protected final List<BedrockPart> shouldRender = new LinkedList<>();
@@ -77,6 +82,7 @@ public class BedrockModel {
         if (pojo.getGeometryModelNew().getBones() == null) {
             return;
         }
+        indexOriginalNodeNames(pojo.getGeometryModelNew().getBones());
         Description description = pojo.getGeometryModelNew().getDescription();
         // 材质的长度、宽度
         int texWidth = description.getTextureWidth();
@@ -191,6 +197,7 @@ public class BedrockModel {
         if (pojo.getGeometryModelLegacy().getBones() == null) {
             return;
         }
+        indexOriginalNodeNames(pojo.getGeometryModelLegacy().getBones());
 
         // 材质的长度、宽度
         int texWidth = pojo.getGeometryModelLegacy().getTextureWidth();
@@ -344,6 +351,16 @@ public class BedrockModel {
         }
     }
 
+    public boolean hasUniqueNodeName(String nodeName) {
+        return nodeName != null && originalNodeNameCounts.getOrDefault(nodeName, 0) == 1;
+    }
+
+    @Nullable
+    public List<BedrockPart> getNodePath(String nodeName) {
+        List<BedrockPart> path = getPath(modelMap.get(nodeName));
+        return path == null ? null : List.copyOf(path);
+    }
+
     public BonesItem getBone(String name) {
         return indexBones.get(name);
     }
@@ -388,17 +405,25 @@ public class BedrockModel {
             return null;
         }
         BedrockPart part = rendererWrapper.getModelRenderer();
-        List<BedrockPart> path = new ArrayList<>();
-        Stack<BedrockPart> stack = new Stack<>();
-        do {
-            stack.push(part);
+        String nodeName = part.name == null ? "<unnamed>" : part.name;
+        List<BedrockPart> reversePath = new ArrayList<>();
+        Set<BedrockPart> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (part != null) {
+            if (!visited.add(part)) {
+                throw new IllegalArgumentException("cycle in Bedrock parent path for node: " + nodeName);
+            }
+            reversePath.add(part);
             part = part.getParent();
-        } while (part != null);
-        while (!stack.isEmpty()) {
-            part = stack.pop();
-            path.add(part);
         }
-        return path;
+        Collections.reverse(reversePath);
+        return reversePath;
+    }
+
+    private void indexOriginalNodeNames(List<BonesItem> bones) {
+        originalNodeNameCounts.clear();
+        for (BonesItem bone : bones) {
+            originalNodeNameCounts.merge(bone.getName(), 1, Integer::sum);
+        }
     }
 
     @Nullable

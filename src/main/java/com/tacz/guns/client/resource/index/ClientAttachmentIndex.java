@@ -4,8 +4,10 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
+import com.tacz.guns.client.model.gltf.render.GltfGunBodyRenderer;
 import com.tacz.guns.client.resource.ClientAssetLoadDispatcher;
 import com.tacz.guns.client.resource.ClientAssetsManager;
+import com.tacz.guns.client.resource.GltfRenderModelLoader;
 import com.tacz.guns.client.resource.pojo.display.LaserConfig;
 import com.tacz.guns.client.resource.pojo.display.attachment.AttachmentDisplay;
 import com.tacz.guns.client.resource.pojo.display.attachment.AttachmentLod;
@@ -25,12 +27,17 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CancellationException;
 
 public class ClientAttachmentIndex {
     private final Object modelLoadLock = new Object();
+    private final Object meshLoadLock = new Object();
+    private final Object guiPendingIdentity = new Object();
     private final Map<Identifier, ClientAttachmentSkinIndex> skinIndexMap = Maps.newHashMap();
     private String name;
     private Identifier displayId;
@@ -54,8 +61,34 @@ public class ClientAttachmentIndex {
     private volatile boolean modelsLoaded = false;
     private volatile boolean modelsLoadFailed = false;
     private volatile CompletableFuture<Void> warmUpTask = null;
+    private volatile boolean invalidated;
+    private volatile @Nullable GltfGunBodyRenderer meshRenderer;
+    private volatile CompletableFuture<Void> meshWarmUpTask;
 
     private ClientAttachmentIndex() {
+    }
+
+    private ClientAttachmentIndex(ClientAttachmentIndex source) {
+        name = source.name;
+        displayId = source.displayId;
+        display = source.display;
+        slotTexture = source.slotTexture;
+        data = source.data;
+        viewsFov = source.viewsFov.clone();
+        zoom = source.zoom == null ? null : source.zoom.clone();
+        views = source.views.clone();
+        isScope = source.isScope;
+        isSight = source.isSight;
+        showMuzzle = source.showMuzzle;
+        showMount = source.showMount;
+        adapterNodeName = source.adapterNodeName;
+        tooltipKey = source.tooltipKey;
+        sounds = new HashMap<>(source.sounds);
+        laserConfig = source.laserConfig;
+    }
+
+    public ClientAttachmentIndex deferredCopy() {
+        return new ClientAttachmentIndex(this);
     }
 
     public static ClientAttachmentIndex getInstance(Identifier registryName, AttachmentIndexPOJO indexPOJO) throws IllegalArgumentException {
@@ -67,7 +100,9 @@ public class ClientAttachmentIndex {
         checkSlotTexture(display, index);
 //        checkSkins(registryName, index);
         checkSounds(display, index);
-        if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
+        if (index.usesMeshRenderModel()) {
+            if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) index.warmUp();
+        } else if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
             index.ensureModelsLoaded();
         }
         return index;
@@ -167,6 +202,11 @@ public class ClientAttachmentIndex {
     }
 
     public void warmUp() {
+        if (invalidated) return;
+        if (usesMeshRenderModel()) {
+            scheduleMeshLoad();
+            return;
+        }
         if (!ResourceConfig.ENABLE_LAZY_CLIENT_ASSET_LOAD.get()) {
             ensureModelsLoaded();
             return;
@@ -188,6 +228,12 @@ public class ClientAttachmentIndex {
     }
 
     private void ensureModelsLoaded() {
+        if (invalidated) return;
+        if (usesMeshRenderModel()) {
+            // Mesh callers never join background decoding, including the optional semantic rig.
+            scheduleMeshLoad();
+            return;
+        }
         if (modelsLoaded || modelsLoadFailed) {
             return;
         }
@@ -208,11 +254,11 @@ public class ClientAttachmentIndex {
     }
 
     private void loadModelsIfNecessary() {
-        if (modelsLoaded) {
+        if (modelsLoaded || invalidated) {
             return;
         }
         synchronized (modelLoadLock) {
-            if (modelsLoaded) {
+            if (modelsLoaded || invalidated) {
                 return;
             }
             checkTextureAndModel(display, this);
@@ -223,6 +269,7 @@ public class ClientAttachmentIndex {
     }
 
     private void handleModelsLoadFailure(Throwable throwable) {
+        if (invalidated) return;
         boolean shouldLog = false;
         synchronized (modelLoadLock) {
             if (!modelsLoaded) {
@@ -339,19 +386,85 @@ public class ClientAttachmentIndex {
     @Nullable
     public BedrockAttachmentModel getAttachmentModel() {
         ensureModelsLoaded();
-        return attachmentModel;
+        return !invalidated && modelsLoaded ? attachmentModel : null;
     }
 
     @Nullable
     public Identifier getModelTexture() {
         ensureModelsLoaded();
-        return modelTexture;
+        return !invalidated && modelsLoaded ? modelTexture : null;
     }
 
     @Nullable
     public Pair<BedrockAttachmentModel, Identifier> getLodModel() {
         ensureModelsLoaded();
-        return lodModel;
+        return !invalidated && modelsLoaded ? lodModel : null;
+    }
+
+    public boolean usesMeshRenderModel() {
+        return display != null && display.getRenderModel() != null && display.getRenderModel().isGltf();
+    }
+
+    public boolean requestedMeshLoad() {
+        return !invalidated && meshWarmUpTask != null;
+    }
+
+    @Nullable
+    public GltfGunBodyRenderer getMeshRenderer() {
+        if (!usesMeshRenderModel() || invalidated) return null;
+        scheduleMeshLoad();
+        GltfGunBodyRenderer ready = meshRenderer;
+        return !invalidated && ready != null && ready.isAvailable() ? ready : null;
+    }
+
+    public record GuiMeshSnapshot(Object pendingIdentity, @Nullable GltfGunBodyRenderer renderer) { }
+
+    public GuiMeshSnapshot guiMeshSnapshot() {
+        return new GuiMeshSnapshot(guiPendingIdentity, getMeshRenderer());
+    }
+
+    public List<CompletableFuture<Void>> warmUpMeshForReload() {
+        if (!usesMeshRenderModel()) return List.of();
+        return List.of(scheduleMeshLoad().thenRun(() -> {
+            GltfGunBodyRenderer ready = meshRenderer;
+            if (invalidated) throw new CancellationException("Attachment was invalidated: " + displayId);
+            if (ready == null || !ready.isAvailable()) {
+                throw new IllegalStateException("Attachment mesh is not ready: " + displayId);
+            }
+        }));
+    }
+
+    private CompletableFuture<Void> scheduleMeshLoad() {
+        synchronized (meshLoadLock) {
+            if (invalidated) return CompletableFuture.failedFuture(new CancellationException("Attachment invalidated"));
+            if (meshWarmUpTask == null) {
+                meshWarmUpTask = CompletableFuture.runAsync(() -> {
+                    try {
+                        loadModelsIfNecessary();
+                        if (invalidated) return;
+                        var ready = GltfRenderModelLoader.load(display.getRenderModel(), () -> invalidated);
+                        synchronized (meshLoadLock) {
+                            if (!invalidated) meshRenderer = ready;
+                        }
+                    } catch (Exception failure) {
+                        if (invalidated) throw new CancellationException("Attachment invalidated during load");
+                        GunMod.LOGGER.warn("Failed to load attachment mesh {}", displayId, failure);
+                        throw new CompletionException(failure);
+                    }
+                }, ClientAssetLoadDispatcher.executor());
+            }
+            return meshWarmUpTask;
+        }
+    }
+
+    public void invalidate() {
+        // Only the short publication lock is shared with the decoder, never its model-load lock.
+        synchronized (meshLoadLock) {
+            invalidated = true;
+            meshRenderer = null;
+            if (meshWarmUpTask != null) meshWarmUpTask.cancel(false);
+        }
+        if (warmUpTask != null) warmUpTask.cancel(false);
     }
 
     public Identifier getSlotTexture() {

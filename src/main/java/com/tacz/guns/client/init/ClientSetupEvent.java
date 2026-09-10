@@ -12,6 +12,7 @@ import com.tacz.guns.client.gui.overlay.KillAmountOverlay;
 import com.tacz.guns.client.input.*;
 import com.tacz.guns.client.model.ScopeStencilFeatureRenderer;
 import com.tacz.guns.client.model.ScopeStencilRenderTypes;
+import com.tacz.guns.client.model.gltf.render.GltfPbrRenderPipelines;
 import com.tacz.guns.client.network.ClientNetworkMessageHandler;
 import com.tacz.guns.client.network.ClientNetworkSender;
 import com.tacz.guns.client.renderer.item.AmmoBoxItemModelProperty;
@@ -164,6 +165,7 @@ public class ClientSetupEvent {
 
     @SubscribeEvent
     public static void registerRenderPipelines(RegisterRenderPipelinesEvent event) {
+        GltfPbrRenderPipelines.register(event);
         ScopeStencilRenderTypes.registerPipelines(event);
     }
 

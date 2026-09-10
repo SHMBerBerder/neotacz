@@ -12,11 +12,14 @@ import com.tacz.guns.client.renderer.item.FirstPersonHandSway;
 import com.tacz.guns.client.renderer.item.FirstPersonArmSubmitter;
 import com.tacz.guns.util.RenderHelper;
 import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.client.renderer.SubmitNodeCollection;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.feature.FeatureFrameContext;
 import net.minecraft.client.renderer.feature.FeatureRenderer;
 import net.minecraft.client.renderer.feature.FeatureRendererType;
+import net.minecraft.client.renderer.feature.phase.FeatureRenderPhase;
 import net.minecraft.client.renderer.feature.submit.SubmitNode;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -43,6 +46,8 @@ import java.util.Set;
  */
 public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeStencilFeatureRenderer.ScopeSubmit> {
     public static final FeatureRendererType<ScopeSubmit> TYPE = FeatureRendererType.create("tacz_scope_stencil");
+    public static final int ATTACHMENT_MESH_ORDER = -970_000;
+    private static final int ATTACHMENT_OPTICS_ORDER = -960_000;
 
     private static final int APERTURE_SEGMENTS = 90;
     private static final int ORDER_CLEAR = -950_000;
@@ -60,6 +65,25 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             System.getProperty("tacz.debug.scope.apertureScale", "1.0"));
 
     private final List<Group> groups = new ArrayList<>();
+
+    /** An attachment-local pass cannot stencil-clip a separately submitted mesh gun body. */
+    public static boolean submitAttachmentSemantics(BedrockAttachmentModel model, ItemStack attachmentItem,
+                                                     ItemStack gunItem, PoseStack attachmentPose,
+                                                     SubmitNodeCollector collector, ItemDisplayContext context,
+                                                     Identifier texture, boolean meshAppearance,
+                                                     int activeViewIndex, int light, int overlay) {
+        if (!context.firstPerson() || !canStageIntegratedPass(model, meshAppearance)) return false;
+        if (!(collector.order(ATTACHMENT_OPTICS_ORDER) instanceof SubmitNodeCollection collection)
+                || collection.allPhases().isEmpty()) return false;
+        RenderType renderType = RenderTypes.entityCutout(texture);
+        @SuppressWarnings("unchecked")
+        FeatureRenderPhase<SubmitNode> phase = (FeatureRenderPhase<SubmitNode>) collection.allPhases().get(0);
+        phase.submit(new ScopeSubmit(null, model, null, gunItem, attachmentItem, context,
+                renderType, renderType, texture, texture, new Matrix4f(attachmentPose.last().pose()),
+                new Matrix3f(attachmentPose.last().normal()), null, false, meshAppearance,
+                activeViewIndex, light, overlay));
+        return true;
+    }
 
     @Override
     public void prepareGroup(FeatureFrameContext context, List<ScopeSubmit> submits, boolean crumbling) {
@@ -132,6 +156,10 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
 
     private static void buildSubmit(Group group, ScopeSubmit submit) {
         BedrockGunModel gunModel = submit.gunModel;
+        if (gunModel == null) {
+            buildSubmitWithSway(group, submit);
+            return;
+        }
         boolean previousRenderHand = gunModel.getRenderHand();
         gunModel.setRenderHand(submit.renderHand);
         try {
@@ -151,7 +179,8 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
         boolean comboScope = submit.attachmentModel.isScope() && submit.attachmentModel.isSight();
         boolean activeViewIsScopeOcular = !comboScope
                 || submit.attachmentModel.isScopeOcularViewIndex(submit.activeScopeViewIndex);
-        String gunClipMode = gunClipMode(submit.attachmentModel, activeViewIsScopeOcular);
+        String gunClipMode = submit.gunModel == null ? "none"
+                : gunClipMode(submit.attachmentModel, activeViewIsScopeOcular);
 
         stage("stencil_clear", submit, false, aimingProgress, apertureRadius, "GL_ALWAYS", "GL_CLEAR",
                 ORDER_CLEAR, null, 0, -1, "stencil_clear", gunClipMode, true, "");
@@ -358,6 +387,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
 
     private static void addBaseModel(Group group, ScopeSubmit submit, PoseStack scopePose, float aimingProgress,
                                      float apertureRadius, String gunClipMode, Set<BedrockPart> specialLeaves) {
+        if (submit.meshAppearance) return;
         stage("base_model", submit, false, aimingProgress, apertureRadius, "none", "none",
                 ORDER_BASE_MODEL, submit.attachmentRenderType, -1, -1, "base_model", gunClipMode, true, "");
         VertexConsumer buffer = group.vertexBuilder(submit.attachmentRenderType);
@@ -367,6 +397,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
 
     private static void addGunBody(Group group, ScopeSubmit submit, PoseStack gunPose, float aimingProgress,
                                    float apertureRadius, String gunClipMode) {
+        if (submit.gunModel == null) return;
         RenderType renderType = switch (gunClipMode) {
             case "equal0" -> ScopeStencilRenderTypes.entityEqual0(submit.gunTexture);
             case "greater127" -> ScopeStencilRenderTypes.entityGreater127(submit.gunTexture);
@@ -387,7 +418,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
 
     private static void addHands(Group group, ScopeSubmit submit, PoseStack gunPose, float aimingProgress,
                                  float apertureRadius, String gunClipMode) {
-        if (!submit.renderHand || submit.player == null) {
+        if (submit.gunModel == null || !submit.renderHand || submit.player == null) {
             return;
         }
         Identifier skinTexture = submit.player.getSkin().body().texturePath();
@@ -414,6 +445,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
                                      String ocularPathKind, String gunClipMode, float aimingProgress,
                                      float apertureRadius, Set<BedrockPart> specialLeaves,
                                      boolean visibleSpecialLeaf) {
+        if (!submit.rendersAttachmentPart(path)) return;
         if (path == null) {
             stage(stage, submit, false, aimingProgress, apertureRadius, stencilFunc, stencilOp, order,
                     renderType, stencilRef, ocularIndex, ocularPathKind, gunClipMode, false, "missing_part_path");
@@ -489,8 +521,16 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
     }
 
     static boolean canStageIntegratedPass(BedrockAttachmentModel model) {
+        return canStageIntegratedPass(model, false);
+    }
+
+    public static boolean canStageMeshOptics(@Nullable BedrockAttachmentModel model, @Nullable Identifier texture) {
+        return model != null && texture != null && canStageIntegratedPass(model, true);
+    }
+
+    static boolean canStageIntegratedPass(BedrockAttachmentModel model, boolean meshAppearance) {
         if (model.isScope()) {
-            return !model.ocularNodePaths.isEmpty() && model.scopeBodyPath != null;
+            return !model.ocularNodePaths.isEmpty() && (meshAppearance || model.scopeBodyPath != null);
         }
         if (model.isSight()) {
             return !model.ocularNodePaths.isEmpty();
@@ -650,7 +690,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
         DRAW
     }
 
-    public record ScopeSubmit(BedrockGunModel gunModel,
+    public record ScopeSubmit(@Nullable BedrockGunModel gunModel,
                               BedrockAttachmentModel attachmentModel,
                               @Nullable AbstractClientPlayer player,
                               ItemStack gunItem,
@@ -662,8 +702,9 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
                               Identifier attachmentTexture,
                               Matrix4f gunPose,
                               Matrix3f gunNormal,
-                              FirstPersonHandSway handSway,
+                              @Nullable FirstPersonHandSway handSway,
                               boolean renderHand,
+                              boolean meshAppearance,
                               int activeScopeViewIndex,
                               int light,
                               int overlay) implements SubmitNode {
@@ -679,8 +720,13 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             return stack;
         }
 
-        private PoseStack toScopePoseStack() {
+        boolean rendersAttachmentPart(@Nullable List<BedrockPart> path) {
+            return !meshAppearance || (path != attachmentModel.scopeBodyPath && path != attachmentModel.ocularRingPath);
+        }
+
+        PoseStack toScopePoseStack() {
             PoseStack stack = toGunPoseStack();
+            if (gunModel == null) return stack;
             for (BedrockPart bedrockPart : gunModel.scopePosPath) {
                 bedrockPart.translateAndRotateAndScale(stack);
             }

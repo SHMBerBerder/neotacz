@@ -7,6 +7,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.item.ItemDisplayContext;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
@@ -92,6 +93,23 @@ public class BedrockPart {
         poseStack.scale(xScale, yScale, zScale);
     }
 
+    public Matrix4f translateAndRotateAndScale(Matrix4f destination) {
+        destination.translate(this.offsetX, this.offsetY, this.offsetZ);
+        destination.translate(this.x / 16.0F, this.y / 16.0F, this.z / 16.0F);
+        if (this.zRot != 0.0F) {
+            destination.rotateZ(this.zRot);
+        }
+        if (this.yRot != 0.0F) {
+            destination.rotateY(this.yRot);
+        }
+        if (this.xRot != 0.0F) {
+            destination.rotateX(this.xRot);
+        }
+        destination.rotate(additionalQuaternion);
+        destination.scale(xScale, yScale, zScale);
+        return destination;
+    }
+
     public void compile(PoseStack.Pose pose, VertexConsumer consumer, int light, int overlay, float red, float green, float blue, float alpha) {
         for (BedrockCube bedrockCube : this.cubes) {
             bedrockCube.compile(pose, consumer, light, overlay, red, green, blue, alpha);
@@ -125,6 +143,7 @@ public class BedrockPart {
     }
 
     public void addChild(BedrockPart model) {
+        model.parent = this;
         this.children.add(model);
     }
 

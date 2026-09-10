@@ -6,6 +6,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import com.tacz.guns.client.model.gltf.render.GltfGuiIconRenderer;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.item.ItemModel;
@@ -16,12 +17,14 @@ import net.minecraft.client.renderer.special.SpecialModelRenderer;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.ResolvableModel;
 import net.minecraft.client.resources.model.ResolvedModel;
+import net.minecraft.client.resources.model.cuboid.ItemTransform;
 import net.minecraft.client.resources.model.sprite.TextureSlots;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.ItemOwner;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import org.joml.Matrix4fc;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.Nullable;
@@ -36,6 +39,9 @@ public class TaczCustomItemModel implements ItemModel {
             new Vector3f(1.0F, 1.0F, 1.0F)
     };
     private static final Supplier<Vector3fc[]> ITEM_EXTENTS_SUPPLIER = () -> ITEM_EXTENTS;
+    private static final Vector3fc[] GUI_ICON_EXTENTS = {new Vector3f(0.05F), new Vector3f(0.95F)};
+    private static final Supplier<Vector3fc[]> GUI_ICON_EXTENTS_SUPPLIER = () -> GUI_ICON_EXTENTS;
+    private static final Matrix4fc GUI_ICON_TRANSFORM = new Matrix4f();
     private static final SpecialModelRenderer<RenderContext> SPECIAL_RENDERER = new SpecialModelRenderer<>() {
         @Override
         public void submit(@Nullable RenderContext argument, PoseStack poseStack, SubmitNodeCollector submitNodeCollector,
@@ -44,9 +50,21 @@ public class TaczCustomItemModel implements ItemModel {
                 return;
             }
             switch (argument.renderer()) {
-                case GUN -> TaczItemRenderers.gun().submitByItem(argument.stack(), argument.displayContext(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
+                case GUN -> {
+                    if (argument.guiIcon() != null) {
+                        TaczItemRenderers.gun().submitGuiIcon(argument.guiIcon(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
+                    } else {
+                        TaczItemRenderers.gun().submitByItem(argument.stack(), argument.displayContext(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
+                    }
+                }
                 case AMMO -> TaczItemRenderers.ammo().submitByItem(argument.stack(), argument.displayContext(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
-                case ATTACHMENT -> TaczItemRenderers.attachment().submitByItem(argument.stack(), argument.displayContext(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
+                case ATTACHMENT -> {
+                    if (argument.guiIcon() != null) {
+                        TaczItemRenderers.attachment().submitGuiIcon(argument.guiIcon(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
+                    } else {
+                        TaczItemRenderers.attachment().submitByItem(argument.stack(), argument.displayContext(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
+                    }
+                }
                 case GUN_SMITH_TABLE -> TaczItemRenderers.gunSmithTable().submitByItem(argument.stack(), argument.displayContext(), poseStack, submitNodeCollector, lightCoords, overlayCoords);
             }
         }
@@ -82,6 +100,15 @@ public class TaczCustomItemModel implements ItemModel {
         output.appendModelIdentityElement(displayContext);
         output.appendModelIdentityElement(item.getItem());
         output.appendModelIdentityElement(ItemStack.hashItemAndComponents(item));
+        GltfGuiIconRenderer.Snapshot guiIcon = displayContext == ItemDisplayContext.GUI ? switch (this.renderer) {
+            case GUN -> GltfGuiIconRenderer.capture(item);
+            case ATTACHMENT -> GltfGuiIconRenderer.captureAttachment(item);
+            default -> null;
+        } : null;
+        if (guiIcon != null) {
+            // Readiness and resource/quality replacement create new tokens, not new keys every frame.
+            output.appendModelIdentityElement(guiIcon.cacheIdentity());
+        }
         output.setOversizedInGui(false);
         ItemStackRenderState.LayerRenderState layer = output.newLayer();
         if (item.hasFoil()) {
@@ -91,14 +118,22 @@ public class TaczCustomItemModel implements ItemModel {
             output.appendModelIdentityElement(foilType);
         }
 
-        RenderContext argument = new RenderContext(item.copy(), displayContext, this.renderer);
+        RenderContext argument = new RenderContext(item.copy(), displayContext, this.renderer, guiIcon);
         layer.setExtents(ITEM_EXTENTS_SUPPLIER);
         layer.setLocalTransform(this.transformation);
         layer.setupSpecialModel(SPECIAL_RENDERER, argument);
         this.properties.applyToLayer(layer, displayContext);
+        if (guiIcon != null && guiIcon.renderer() != null) {
+            // The mesh frame is already centered and fitted; inherited block transforms would clip the atlas slot.
+            layer.setExtents(GUI_ICON_EXTENTS_SUPPLIER);
+            layer.setLocalTransform(GUI_ICON_TRANSFORM);
+            layer.setItemTransform(ItemTransform.NO_TRANSFORM);
+            layer.setUsesBlockLight(true);
+        }
     }
 
-    private record RenderContext(ItemStack stack, ItemDisplayContext displayContext, RendererKind renderer) {
+    private record RenderContext(ItemStack stack, ItemDisplayContext displayContext, RendererKind renderer,
+                                 GltfGuiIconRenderer.@Nullable Snapshot guiIcon) {
     }
 
     public enum RendererKind {

@@ -26,7 +26,12 @@ logs
 .DS_Store
 .codex/
 .codex-loop-runs/
+.codex-semantic-audit-runs/
 .cgcignore
+
+# Downloaded model inputs and local Blender validation output
+/tools/blender/*/source/
+/tools/blender/*/output/
 
 # Files from Forge MDK
 forge*changelog.txt

@@ -1,0 +1,19 @@
+{
+  "namespace": "bolt_action_mesh",
+  "gun_id": "bolt_action_rifle_762",
+  "version": "1.0.0-local",
+  "mod_version": "[1.1.8-neoforge-mc26.2,)",
+  "reference_remap": {
+    "tacz:m95/mag_drup_large_drum_dirt": "tacz:mag_drop_sound/mag_drup_large_drum_dirt"
+  },
+  "source_files": {
+    "neotacz_bolt_action_rifle_7_62_8k.gltf": "ffb4985381a70a40c7af35dbc086c220f914fd49b0b9154b0eb7e0127bb6ff16",
+    "neotacz_bolt_action_rifle_7_62_8k.bin": "118c7fa757303ac0bd4ede6bca9645530af8b8b76a56249c822a0a47f0f4885c",
+    "textures/bolt_action_rifle_7_62_accesories_arm_8k.jpg": "96a82545f519bf739e6eabf26a7b7ae508eddd828026d4f23c4d0d3c517193f9",
+    "textures/bolt_action_rifle_7_62_accesories_diff_8k.jpg": "591291eddb11d432439fd8331ee3d5e83aed1e86968216ed293c4c0157c3dc1a",
+    "textures/bolt_action_rifle_7_62_accesories_nor_gl_8k.jpg": "496b31e8d84d4d23178e5f4a47c9118f01fc2243fadf418f8e5741e10917039b",
+    "textures/bolt_action_rifle_7_62_arm_8k.jpg": "9b77e5ba6408cb35dc7cc5033bc4a8d423cbbb07f1255dbe742517063a969709",
+    "textures/bolt_action_rifle_7_62_diff_8k.jpg": "a73d1ad78199e804dfba2383070bd5823b2622579fcd1e0210579bdd265a1422",
+    "textures/bolt_action_rifle_7_62_nor_gl_8k.jpg": "4a3b1c460c91e26105fa6be678d7f2fd826122415b47aefb7e6e7ff0d352fd45"
+  }
+}

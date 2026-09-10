@@ -202,6 +202,17 @@ public class BedrockAttachmentModel extends BedrockAnimatedModel {
         this.attachmentItem = attachmentItem;
     }
 
+    /** Functional effects only; the caller owns the attachment's visible geometry. */
+    public void submitInstalledSemantics(@Nullable ItemStack attachmentItem, ItemStack gunItem,
+                                         PoseStack matrixStack, ItemDisplayContext transformType) {
+        prepareInstalledRenderState(attachmentItem, gunItem);
+        if (laserBeamPaths != null) {
+            for (var path : laserBeamPaths) {
+                BeamRenderer.renderLaserBeam(attachmentItem, matrixStack, transformType, path);
+            }
+        }
+    }
+
     public int submitInstalled(@Nullable ItemStack attachmentItem, ItemStack currentGunItem, PoseStack matrixStack,
                                 SubmitNodeCollector collector, ItemDisplayContext transformType, RenderType renderType,
                                 Identifier texture, int light, int overlay) {

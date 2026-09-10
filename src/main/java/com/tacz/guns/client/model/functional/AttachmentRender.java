@@ -10,7 +10,9 @@ import com.tacz.guns.client.debug.ScopeRenderDebug;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.BedrockGunModel;
 import com.tacz.guns.client.model.IFunctionalRenderer;
+import com.tacz.guns.client.model.ScopeStencilFeatureRenderer;
 import com.tacz.guns.client.renderer.item.AttachmentItemRenderer;
+import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import com.tacz.guns.util.RenderDistance;
 import com.tacz.guns.util.RenderHelper;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -46,6 +48,17 @@ public class AttachmentRender implements IFunctionalRenderer {
     }
 
     public static void renderAttachment(ItemStack attachmentItem, ItemStack gunItem, PoseStack poseStack, ItemDisplayContext transformType, int light, int overlay) {
+        if (attachmentItem.getItem() instanceof IAttachment attachment) {
+            var index = TimelessAPI.getClientAttachmentIndex(attachment.getAttachmentId(attachmentItem));
+            if (index.isPresent() && index.get().usesMeshRenderModel()) {
+                SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
+                if (collector != null) {
+                    submitMeshAttachment(index.get(), attachmentItem, gunItem, poseStack, collector,
+                            transformType, light, overlay, false);
+                }
+                return;
+            }
+        }
         poseStack.translate(0, -1.5, 0);
         if (attachmentItem.getItem() instanceof IAttachment iAttachment) {
             Identifier attachmentId = iAttachment.getAttachmentId(attachmentItem);
@@ -80,22 +93,34 @@ public class AttachmentRender implements IFunctionalRenderer {
 
     public static int submitMountedAttachment(ItemStack attachmentItem, ItemStack gunItem, PoseStack poseStack,
                                               ItemDisplayContext transformType, int light, int overlay) {
+        return submitMountedAttachment(attachmentItem, gunItem, poseStack, transformType, light, overlay, false);
+    }
+
+    public static int submitMountedAttachment(ItemStack attachmentItem, ItemStack gunItem, PoseStack poseStack,
+                                              ItemDisplayContext transformType, int light, int overlay,
+                                              boolean integratedScopeExpected) {
         SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
         if (collector == null) {
             ScopeRenderDebug.path("mounted_attachment_no_collector", attachmentItem, gunItem, transformType, "");
             return BedrockGunModel.SCOPE_GUN_CLIP_NONE;
         }
-        poseStack.translate(0, -1.5, 0);
         if (attachmentItem.getItem() instanceof IAttachment iAttachment) {
             Identifier attachmentId = iAttachment.getAttachmentId(attachmentItem);
             ScopeRenderDebug.path("mounted_attachment_submit", attachmentItem, gunItem, transformType, attachmentId.toString());
             var attachmentIndex = TimelessAPI.getClientAttachmentIndex(attachmentId);
             if (attachmentIndex.isEmpty()) {
+                poseStack.translate(0, -1.5, 0);
                 debugSkippedAttachment(attachmentId, "missing mounted client attachment index", false, false, transformType);
                 AttachmentItemRenderer.SLOT_ATTACHMENT_MODEL.submit(
                         poseStack, collector, RenderTypes.entityTranslucent(MissingTextureAtlasSprite.getLocation()), light, overlay);
                 return BedrockGunModel.SCOPE_GUN_CLIP_NONE;
             }
+            if (attachmentIndex.get().usesMeshRenderModel()) {
+                submitMeshAttachment(attachmentIndex.get(), attachmentItem, gunItem, poseStack, collector,
+                        transformType, light, overlay, integratedScopeExpected);
+                return BedrockGunModel.SCOPE_GUN_CLIP_NONE;
+            }
+            poseStack.translate(0, -1.5, 0);
             BedrockAttachmentModel model = attachmentIndex.get().getAttachmentModel();
             Identifier texture = attachmentIndex.get().getModelTexture();
             if (model == null || texture == null) {
@@ -112,9 +137,53 @@ public class AttachmentRender implements IFunctionalRenderer {
             RenderType renderType = RenderTypes.entityCutout(texture);
             ScopeRenderDebug.resolvedAttachment(attachmentItem, gunItem, transformType, attachmentIndex.get(),
                     texture, true, true, "");
+            if (ScopeStencilFeatureRenderer.submitAttachmentSemantics(model, attachmentItem, gunItem, poseStack,
+                    collector, transformType, texture, false, activeScopeViewIndex(attachmentIndex.get(), attachmentItem),
+                    light, overlay)) {
+                model.submitInstalledSemantics(attachmentItem, gunItem, poseStack, transformType);
+                return BedrockGunModel.SCOPE_GUN_CLIP_NONE;
+            }
             return model.submitInstalled(attachmentItem, gunItem, poseStack, collector, transformType, renderType, texture, light, overlay);
         }
         return BedrockGunModel.SCOPE_GUN_CLIP_NONE;
+    }
+
+    private static void submitMeshAttachment(ClientAttachmentIndex index, ItemStack attachmentItem, ItemStack gunItem,
+                                              PoseStack mountPose, SubmitNodeCollector collector,
+                                              ItemDisplayContext context, int light, int overlay,
+                                              boolean integratedScopeExpected) {
+        var renderer = index.getMeshRenderer();
+        if (renderer == null) return;
+        boolean optical = requiresMeshOptics(context, index.isScope() || index.isSight());
+        BedrockAttachmentModel semantics = index.getAttachmentModel();
+        Identifier texture = index.getModelTexture();
+        if (optical && !ScopeStencilFeatureRenderer.canStageMeshOptics(semantics, texture)) return;
+        var meshCollector = optical
+                ? collector.order(ScopeStencilFeatureRenderer.ATTACHMENT_MESH_ORDER) : collector;
+        if (!renderer.submitAttachment(mountPose, context, meshCollector, light, overlay)) return;
+        if (semantics == null) return;
+        mountPose.pushPose();
+        try {
+            mountPose.translate(0, -1.5, 0);
+            semantics.submitInstalledSemantics(attachmentItem, gunItem, mountPose, context);
+            if (!integratedScopeExpected && texture != null) {
+                ScopeStencilFeatureRenderer.submitAttachmentSemantics(semantics, attachmentItem, gunItem, mountPose,
+                        collector, context, texture, true, activeScopeViewIndex(index, attachmentItem), light, overlay);
+            }
+        } finally {
+            mountPose.popPose();
+        }
+    }
+
+    static boolean requiresMeshOptics(ItemDisplayContext context, boolean optical) {
+        return context.firstPerson() && optical;
+    }
+
+    private static int activeScopeViewIndex(ClientAttachmentIndex index, ItemStack stack) {
+        int[] views = index.getViews();
+        IAttachment attachment = IAttachment.getIAttachmentOrNull(stack);
+        return views.length == 0 || attachment == null ? -1
+                : views[Math.floorMod(attachment.getZoomNumber(stack), views.length)] - 1;
     }
 
     private static void debugSkippedAttachment(Identifier attachmentId, String reason, boolean hasModel,
