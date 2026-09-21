@@ -88,10 +88,10 @@ public class InteractKeyTextOverlay implements GuiLayer {
 
     private static void renderText(GuiGraphicsExtractor graphics, int width, int height, Font font, String keyName, boolean willFilterByHand) {
         Component title = Component.translatable("gui.tacz.interact_key.text.desc", StringUtils.capitalize(keyName));
-        graphics.text(font, title, (int) ((width - font.width(title)) / 2.0f), (int) (height / 2.0f - 25), 0xFFFF55, false);
+        graphics.text(font, title, (int) ((width - font.width(title)) / 2.0f), (int) (height / 2.0f - 25), 0xFFFFFF55, false);
         if (willFilterByHand) {
             Component filter = Component.translatable("gui.tacz.interact_key.text.gun_smith_table_filter");
-            graphics.text(font, filter, (int) ((width - font.width(filter)) / 2.0f), (int) (height / 2.0f - 14), 0xAAAAAA, false);
+            graphics.text(font, filter, (int) ((width - font.width(filter)) / 2.0f), (int) (height / 2.0f - 14), 0xFFAAAAAA, false);
         }
     }
 }

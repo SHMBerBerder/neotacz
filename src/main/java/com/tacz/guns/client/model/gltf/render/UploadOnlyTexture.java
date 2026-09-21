@@ -1,9 +1,9 @@
 package com.tacz.guns.client.model.gltf.render;
 
-import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.device.GpuDevice;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 
 /** An immutable GPU texture; unlike DynamicTexture, it has no persistent CPU pixel allocation. */

@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "condition": {
+            "type": "minecraft:match_block",
+            "blocks": "tacz:statue",
+            "state": {
+              "half": "lower"
+            }
+          },
+          "name": "tacz:statue"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

@@ -14,8 +14,10 @@ import com.tacz.guns.crafting.result.GunSmithTableResult;
 import com.tacz.guns.resource.CommonAssetsManager;
 import com.tacz.guns.resource.network.DataType;
 import com.tacz.guns.resource.pojo.data.recipe.TableRecipe;
+import com.tacz.guns.resource.serialize.ItemStackJsonHelper;
 import com.tacz.guns.util.ResourceScanner;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -32,7 +34,8 @@ public class GunSmithTableRecipeDataManager extends SimplePreparableReloadListen
     private static final Set<String> WORKBENCH_RESULT_TYPES = Set.of(
             GunSmithTableResult.GUN,
             GunSmithTableResult.AMMO,
-            GunSmithTableResult.ATTACHMENT
+            GunSmithTableResult.ATTACHMENT,
+            GunSmithTableResult.CUSTOM
     );
 
     private final Marker marker = MarkerManager.getMarker("GunSmithTableRecipeData");
@@ -40,6 +43,7 @@ public class GunSmithTableRecipeDataManager extends SimplePreparableReloadListen
     private final FileToIdConverter itemTagFileToIdConverter = FileToIdConverter.json("tags/item");
     private final Map<Identifier, GunSmithTableRecipe> recipes = Maps.newLinkedHashMap();
     private Map<Identifier, String> networkCache = Map.of();
+    private boolean initialized;
 
     @NotNull
     @Override
@@ -53,6 +57,7 @@ public class GunSmithTableRecipeDataManager extends SimplePreparableReloadListen
     @Override
     protected void apply(PreparedData data, ResourceManager resourceManager, ProfilerFiller profiler) {
         recipes.clear();
+        initialized = false;
         ImmutableMap.Builder<Identifier, String> builder = ImmutableMap.builder();
         int typeMatched = 0;
         int skippedNonWorkbench = 0;
@@ -189,6 +194,29 @@ public class GunSmithTableRecipeDataManager extends SimplePreparableReloadListen
 
     public Map<Identifier, GunSmithTableRecipe> getRecipes() {
         return recipes;
+    }
+
+    public void initializeRecipes(HolderLookup.Provider registries) {
+        Map<Identifier, String> validCache = new LinkedHashMap<>(networkCache);
+        var entries = recipes.entrySet().iterator();
+        while (entries.hasNext()) {
+            var entry = entries.next();
+            try {
+                entry.getValue().init();
+                ItemStackJsonHelper.resolvePaintingVariant(entry.getValue().getOutput(), registries);
+            } catch (RuntimeException exception) {
+                GunMod.LOGGER.error(marker, "Failed to initialize gun smith table recipe {}", entry.getKey(), exception);
+                validCache.remove(entry.getKey());
+                entries.remove();
+            }
+        }
+        networkCache = Map.copyOf(validCache);
+        initialized = true;
+    }
+
+    public GunSmithTableRecipe getInitializedRecipe(Identifier id) {
+        GunSmithTableRecipe recipe = initialized ? recipes.get(id) : null;
+        return recipe == null || recipe.getOutput().isEmpty() ? null : recipe;
     }
 
     public record PreparedData(Map<Identifier, JsonElement> recipes,

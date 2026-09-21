@@ -62,8 +62,8 @@ public class TargetMinecartRenderer extends AbstractMinecartRenderer<TargetMinec
             stack.pushPose();
             stack.translate(0.5, 1.875, 0.5);
             stack.scale(1.5f, 1.5f, 1.5f);
-            stack.mulPose(Axis.ZN.rotationDegrees(180));
-            stack.mulPose(Axis.YN.rotationDegrees(90));
+            stack.rotate(Axis.ZN.rotationDegrees(180));
+            stack.rotate(Axis.YN.rotationDegrees(90));
             RenderType renderType = RenderTypes.entityTranslucent(InternalAssetLoader.TARGET_MINECART_TEXTURE_LOCATION);
             submitNodeCollector.submitCustomGeometry(stack, renderType, (pose, buffer) -> {
                 PoseStack callbackPoseStack = BedrockSubmitUtils.fromPose(pose);

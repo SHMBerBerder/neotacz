@@ -1,6 +1,7 @@
 package com.tacz.guns.item;
 
 import com.tacz.guns.util.InventoryHandlerUtils;
+import net.neoforged.neoforge.transfer.item.ItemUtil;
 
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.GunProperties;
@@ -607,8 +608,8 @@ public class ModernKineticGunScriptAPI {
         }
         return InventoryHandlerUtils.of(shooter).map(cap -> {
             // 背包检查
-            for (int i = 0; i < cap.getSlots(); i++) {
-                ItemStack checkAmmoStack = cap.getStackInSlot(i);
+            for (int i = 0; i < cap.size(); i++) {
+                ItemStack checkAmmoStack = ItemUtil.getStack(cap, i);
                 if (checkAmmoStack.getItem() instanceof IAmmo iAmmo && iAmmo.isAmmoOfGun(itemStack, checkAmmoStack)) {
                     return true;
                 }

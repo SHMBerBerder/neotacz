@@ -15,7 +15,6 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -24,13 +23,13 @@ public class RefitKey {
     public static final KeyMapping REFIT_KEY = new KeyMapping("key.tacz.refit.desc",
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_Z,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_Z,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
     public static void onRefitPress(InputEvent.Key event) {
-        if (event.getAction() == GLFW.GLFW_PRESS && TaczKeyMappings.matches(REFIT_KEY, event)) {
+        if (event.getAction() == InputConstants.PRESS && TaczKeyMappings.matches(REFIT_KEY, event)) {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null || player.isSpectator()) {
                 return;

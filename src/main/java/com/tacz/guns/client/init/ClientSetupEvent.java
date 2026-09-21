@@ -30,6 +30,7 @@ import com.tacz.guns.compat.ar.ARCompat;
 import com.tacz.guns.compat.cloth.MenuIntegration;
 import com.tacz.guns.compat.controllable.ControllableCompat;
 import com.tacz.guns.compat.playeranimator.PlayerAnimatorCompat;
+import com.tacz.guns.compat.playeranimator.animation.PlayerAnimatorRenderBridge;
 import com.tacz.guns.compat.shouldersurfing.ShoulderSurfingCompat;
 import com.tacz.guns.init.CompatRegistry;
 import com.tacz.guns.inventory.tooltip.AmmoBoxTooltip;
@@ -58,6 +59,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
+import net.neoforged.neoforge.client.renderstate.RegisterRenderStateModifiersEvent;
 import com.tacz.guns.network.NetworkHandler;
 
 import static net.neoforged.neoforge.client.gui.VanillaGuiLayers.CROSSHAIR;
@@ -194,6 +196,11 @@ public class ClientSetupEvent {
         if (PlayerAnimatorCompat.isInstalled()) {
             PlayerAnimatorCompat.registerReloadListener(event::addListener);
         }
+    }
+
+    @SubscribeEvent
+    public static void registerPlayerAnimatorRenderState(RegisterRenderStateModifiersEvent event) {
+        PlayerAnimatorRenderBridge.register(event);
     }
 
     private static Identifier guiLayerId(String path) {

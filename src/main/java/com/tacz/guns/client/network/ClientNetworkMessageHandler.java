@@ -140,7 +140,12 @@ public final class ClientNetworkMessageHandler {
         if (message.isRemoteConnection()) {
             CommonAssetsManager.clearInstance();
         }
-        CommonNetworkCache.INSTANCE.fromNetwork(message.getCache());
+        var connection = Minecraft.getInstance().getConnection();
+        if (connection == null) {
+            CommonNetworkCache.INSTANCE.fromNetwork(message.getCache());
+        } else {
+            CommonNetworkCache.INSTANCE.fromNetwork(message.getCache(), connection.registryAccess());
+        }
         com.tacz.guns.GunMod.LOGGER.info("TACZ CommonNetworkCache loaded: recipes={} blockIndex={} gunIndex={} ammoIndex={} attachmentIndex={}",
                 CommonNetworkCache.INSTANCE.getAllRecipes().size(),
                 CommonNetworkCache.INSTANCE.getAllBlocks().size(),

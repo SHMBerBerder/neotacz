@@ -111,7 +111,7 @@ class GltfRigidGeometryCacheTest {
         assertGeometryEquals(cpu, cached);
         PoseStack outer = new PoseStack();
         outer.translate(2, -3, 1);
-        outer.mulPose(new Quaternionf().rotationXYZ(-0.2f, 0.4f, 0.1f));
+        outer.rotate(new Quaternionf().rotationXYZ(-0.2f, 0.4f, 0.1f));
         outer.scale(0.7f, 1.3f, 1.1f);
         CapturingConsumer expected = new CapturingConsumer();
         CapturingConsumer actual = new CapturingConsumer();
@@ -351,6 +351,9 @@ class GltfRigidGeometryCacheTest {
         @Override public VertexConsumer setUv(float u, float v) { return add(u, v); }
         @Override public VertexConsumer setUv1(int u, int v) { return add(u, v); }
         @Override public VertexConsumer setUv2(int u, int v) { return add(u, v); }
+        @Override public VertexConsumer setUv3(float u, float v) {
+            throw new AssertionError("glTF ENTITY does not contain UV3");
+        }
         @Override public VertexConsumer setNormal(float x, float y, float z) { return add(x, y, z); }
         @Override public VertexConsumer setLineWidth(float width) { return this; }
     }

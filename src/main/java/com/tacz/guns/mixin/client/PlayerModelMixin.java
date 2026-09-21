@@ -4,9 +4,12 @@ import com.tacz.guns.api.client.other.KeepingItemRenderer;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.client.animation.third.InnerThirdPersonManager;
 import com.tacz.guns.client.renderer.other.LivingEntityRenderStateTracker;
+import com.tacz.guns.compat.playeranimator.animation.PlayerAnimationFrame;
+import com.tacz.guns.compat.playeranimator.animation.PlayerAnimatorRenderBridge;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -46,8 +49,13 @@ public class PlayerModelMixin extends HumanoidModel<AvatarRenderState> {
             return;
         }
 
+        PlayerAnimationFrame frame = state.getRenderData(PlayerAnimatorRenderBridge.FRAME);
+        if (frame != null) {
+            frame.apply(this);
+            return;
+        }
         LivingEntity entity = LivingEntityRenderStateTracker.get(state);
-        if (entity != null) {
+        if (entity != null && !(entity instanceof AbstractClientPlayer)) {
             InnerThirdPersonManager.setRotationAnglesHead(entity, this.rightArm, this.leftArm, this.body, this.head, state.walkAnimationSpeed);
         }
     }

@@ -16,7 +16,6 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -25,8 +24,8 @@ public class CrawlKey {
     public static final KeyMapping CRAWL_KEY = new KeyMapping("key.tacz.crawl.desc",
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_C,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_C,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
@@ -52,10 +51,10 @@ public class CrawlKey {
                 if (!KeyConfig.HOLD_TO_CRAWL.get()) {
                     action = !operator.isCrawl();
                 }
-                if (event.getAction() == GLFW.GLFW_PRESS) {
+                if (event.getAction() == InputConstants.PRESS) {
                     IClientPlayerGunOperator.fromLocalPlayer(player).crawl(action);
                 }
-                if (KeyConfig.HOLD_TO_CRAWL.get() && event.getAction() == GLFW.GLFW_RELEASE) {
+                if (KeyConfig.HOLD_TO_CRAWL.get() && event.getAction() == InputConstants.RELEASE) {
                     IClientPlayerGunOperator.fromLocalPlayer(player).crawl(false);
                 }
             }

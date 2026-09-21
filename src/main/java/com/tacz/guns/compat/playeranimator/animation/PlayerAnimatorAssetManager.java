@@ -2,10 +2,12 @@ package com.tacz.guns.compat.playeranimator.animation;
 
 import com.google.common.collect.Maps;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
 import com.tacz.guns.GunMod;
 import dev.kosmx.playerAnim.core.data.KeyframeAnimation;
 import dev.kosmx.playerAnim.core.data.gson.AnimationSerializing;
-import dev.kosmx.playerAnim.minecraftApi.PlayerAnimationRegistry;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
@@ -23,6 +25,7 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
 
     private final FileToIdConverter filetoidconverter = new FileToIdConverter("player_animator", ".json");
     private final HashMap<Identifier, HashMap<String, KeyframeAnimation>> animations = new HashMap<>();
+    private volatile long generation;
 
     public static PlayerAnimatorAssetManager get() {
         if (INSTANCE == null) {
@@ -35,10 +38,11 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
         List<KeyframeAnimation> keyframeAnimations = AnimationSerializing.deserializeAnimation(stream);
         for (var animation : keyframeAnimations) {
             if (animation.extraData.get("name") instanceof String text) {
-                String name = PlayerAnimationRegistry.serializeTextToString(text).toLowerCase(Locale.ENGLISH);
+                String name = animationName(text).toLowerCase(Locale.ENGLISH);
                 animations.computeIfAbsent(id, k -> Maps.newHashMap()).put(name, animation);
             }
         }
+        generation++;
     }
 
     Optional<KeyframeAnimation> getAnimations(Identifier id, String name) {
@@ -55,6 +59,23 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
 
     public void clearAll() {
         animations.clear();
+        generation++;
+    }
+
+    public long generation() {
+        return generation;
+    }
+
+    static String animationName(String text) {
+        try {
+            var decoded = ComponentSerialization.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(text)).result();
+            if (decoded.isPresent()) {
+                return decoded.get().getString();
+            }
+        } catch (Exception ignored) {
+            // Match the old PlayerAnimationRegistry's plain-name fallback.
+        }
+        return text.replace("\"", "");
     }
 
     @Override
@@ -68,7 +89,7 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
                 List<KeyframeAnimation> keyframeAnimations = AnimationSerializing.deserializeAnimation(reader);
                 for (var animation : keyframeAnimations) {
                     if (animation.extraData.get("name") instanceof String text) {
-                        String name = PlayerAnimationRegistry.serializeTextToString(text).toLowerCase(Locale.ENGLISH);
+                        String name = animationName(text).toLowerCase(Locale.ENGLISH);
                         output.computeIfAbsent(resourcelocation1, k -> Maps.newHashMap()).put(name, animation);
                     }
                 }
@@ -83,5 +104,6 @@ public class PlayerAnimatorAssetManager extends SimplePreparableReloadListener<M
     protected void apply(Map<Identifier, HashMap<String, KeyframeAnimation>> map, ResourceManager manager, ProfilerFiller profiler) {
         animations.clear();
         animations.putAll(map);
+        generation++;
     }
 }

@@ -8,7 +8,7 @@ import com.tacz.guns.client.resource.pojo.model.BedrockModelPOJO;
 import com.tacz.guns.client.resource.pojo.model.BedrockVersion;
 import com.tacz.guns.config.client.ResourceConfig;
 import net.minecraft.resources.Identifier;
-import net.neoforged.fml.config.LoadedConfigFixture;
+import com.tacz.guns.testsupport.LoadedConfigFixture;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 import java.lang.reflect.Field;

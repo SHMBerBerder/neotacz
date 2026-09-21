@@ -40,8 +40,8 @@ public class ClientAmmoBoxTooltip implements ClientTooltipComponent {
     }
 
     private void drawText(GuiGraphicsExtractor graphics, Font font, int pX, int pY) {
-        graphics.text(font, ammoName, pX + 20, pY + 4, 0xffaa00, false);
-        graphics.text(font, count, pX + 20, pY + 15, 0x666666, false);
+        graphics.text(font, ammoName, pX + 20, pY + 4, 0xFFFFAA00, false);
+        graphics.text(font, count, pX + 20, pY + 15, 0xFF666666, false);
     }
 
     @Override

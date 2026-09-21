@@ -38,9 +38,9 @@ public class AmmoItemRenderer {
         poseStack.translate(0, 1.5, 0);
         for (int i = nodePath.size() - 1; i >= 0; i--) {
             BedrockPart t = nodePath.get(i);
-            poseStack.mulPose(Axis.XN.rotation(t.xRot));
-            poseStack.mulPose(Axis.YN.rotation(t.yRot));
-            poseStack.mulPose(Axis.ZN.rotation(t.zRot));
+            poseStack.rotate(Axis.XN.rotation(t.xRot));
+            poseStack.rotate(Axis.YN.rotation(t.yRot));
+            poseStack.rotate(Axis.ZN.rotation(t.zRot));
             if (t.getParent() != null) {
                 poseStack.translate(-t.x * scale.x() / 16.0F, -t.y * scale.y() / 16.0F, -t.z * scale.z() / 16.0F);
             } else {
@@ -78,7 +78,7 @@ public class AmmoItemRenderer {
 
     private static void submitSlotTexture(PoseStack poseStack, SubmitNodeCollector submitNodeCollector, int pPackedLight, int pPackedOverlay, Identifier texture) {
         poseStack.translate(0.5, 1.5, 0.5);
-        poseStack.mulPose(Axis.ZN.rotationDegrees(180));
+        poseStack.rotate(Axis.ZN.rotationDegrees(180));
         SLOT_AMMO_MODEL.submit(poseStack, submitNodeCollector, RenderTypes.entityTranslucent(texture), pPackedLight, pPackedOverlay);
     }
 

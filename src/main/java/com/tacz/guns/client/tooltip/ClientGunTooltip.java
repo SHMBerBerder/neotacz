@@ -59,8 +59,8 @@ public class ClientGunTooltip implements ClientTooltipComponent {
         if (!shouldShow(GunTooltipPart.AMMO_INFO)) {
             return;
         }
-        graphics.text(font, this.ammoName, pX + 20, pY + 4, 0xffaa00, false);
-        graphics.text(font, this.ammoCountText, pX + 20, pY + 14, 0x777777, false);
+        graphics.text(font, this.ammoName, pX + 20, pY + 4, 0xFFFFAA00, false);
+        graphics.text(font, this.ammoCountText, pX + 20, pY + 14, 0xFF777777, false);
     }
 
     @Override

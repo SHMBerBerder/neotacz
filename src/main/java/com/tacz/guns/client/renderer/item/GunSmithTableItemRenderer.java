@@ -40,7 +40,7 @@ public class GunSmithTableItemRenderer {
             }
 
             poseStack.translate(0.5, 1.5, 0.5);
-            poseStack.mulPose(Axis.ZN.rotationDegrees(180));
+            poseStack.rotate(Axis.ZN.rotationDegrees(180));
             RenderType renderType = RenderTypes.entityTranslucent(texture);
             BedrockSubmitUtils.submitModel(submitNodeCollector, poseStack, renderType, model, transformType, pPackedLight, pPackedOverlay);
         }, () -> submitSlotTexture(poseStack, submitNodeCollector, pPackedLight, pPackedOverlay, MissingTextureAtlasSprite.getLocation()));
@@ -49,7 +49,7 @@ public class GunSmithTableItemRenderer {
 
     private static void submitSlotTexture(PoseStack poseStack, SubmitNodeCollector submitNodeCollector, int pPackedLight, int pPackedOverlay, Identifier texture) {
         poseStack.translate(0.5, 1.5, 0.5);
-        poseStack.mulPose(Axis.ZN.rotationDegrees(180));
+        poseStack.rotate(Axis.ZN.rotationDegrees(180));
         SLOT_BLOCK_MODEL.submit(poseStack, submitNodeCollector, RenderTypes.entityTranslucent(texture), pPackedLight, pPackedOverlay);
     }
 }

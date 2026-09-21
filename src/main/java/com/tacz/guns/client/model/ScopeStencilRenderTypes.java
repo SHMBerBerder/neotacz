@@ -1,15 +1,17 @@
 package com.tacz.guns.client.model;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.PrimitiveTopology;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.CompareOp;
+import com.google.common.collect.MapMaker;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
 import com.tacz.guns.GunMod;
 import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
+import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
@@ -36,12 +38,14 @@ public final class ScopeStencilRenderTypes {
     private static final DepthStencilState STENCIL_MUTATION_DEPTH =
             new DepthStencilState(CompareOp.ALWAYS_PASS, false);
 
-    private static final RenderPipeline CLEAR_STENCIL_PIPELINE = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+    private static final RenderPipeline CLEAR_STENCIL_PIPELINE = RenderPipeline.builder()
             .withLocation(id("pipeline/scope_stencil/clear"))
-            .withPrimitiveTopology(PrimitiveTopology.QUADS)
+            .withVertexShader("core/screenquad")
+            .withFragmentShader(id("core/scope_stencil_clear"))
+            .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
             .withColorTargetState(NO_COLOR_WRITE)
-            .withDepthStencilState(ALWAYS_NO_DEPTH_WRITE)
-            .withStencilTest(stencil(StencilOperation.ZERO, CompareOp.ALWAYS_PASS, 0, STENCIL_MASK))
+            .withDepthStencilState(withStencil(ALWAYS_NO_DEPTH_WRITE,
+                    stencil(StencilOperation.ZERO, CompareOp.ALWAYS_PASS, 0, STENCIL_MASK)))
             .withCull(false)
             .build();
     private static final RenderPipeline ENTITY_EQUAL_0_PIPELINE = entityPipeline(
@@ -58,10 +62,6 @@ public final class ScopeStencilRenderTypes {
     private static final RenderPipeline[] ENTITY_EQUAL_REF_NO_DEPTH_PIPELINES = new RenderPipeline[MAX_OCULAR_REF + 1];
     private static final RenderPipeline[] ENTITY_EQUAL_INVERTED_REF_PIPELINES = new RenderPipeline[MAX_OCULAR_REF + 1];
     private static final RenderPipeline[] ENTITY_EQUAL_INVERTED_REF_NO_DEPTH_PIPELINES = new RenderPipeline[MAX_OCULAR_REF + 1];
-    private static final RenderType CLEAR_STENCIL = RenderType.create(
-            "tacz_scope_stencil_clear",
-            RenderSetup.builder(CLEAR_STENCIL_PIPELINE).createRenderSetup()
-    );
     private static final Map<Identifier, RenderType> ENTITY_EQUAL_0_TYPES = new ConcurrentHashMap<>();
     private static final Map<Identifier, RenderType> ENTITY_GREATER_127_TYPES = new ConcurrentHashMap<>();
     private static final Map<TexturedRefKey, RenderType> OCULAR_WRITE_TYPES = new ConcurrentHashMap<>();
@@ -70,6 +70,8 @@ public final class ScopeStencilRenderTypes {
     private static final Map<TexturedRefKey, RenderType> ENTITY_EQUAL_INVERTED_REF_TYPES = new ConcurrentHashMap<>();
     private static final Map<TexturedRefKey, RenderType> ENTITY_EQUAL_INVERTED_REF_NO_DEPTH_TYPES = new ConcurrentHashMap<>();
     private static final RenderType[] APERTURE_INVERT_TYPES = new RenderType[MAX_OCULAR_REF + 1];
+    private static final Map<RenderPipeline, Map<LegacyVariant, RenderPipeline>> LEGACY_PIPELINES =
+            new MapMaker().weakKeys().makeMap();
 
     static {
         for (int ref = 1; ref <= MAX_OCULAR_REF; ref++) {
@@ -104,8 +106,8 @@ public final class ScopeStencilRenderTypes {
                     .withLocation(id("pipeline/scope_stencil/aperture_invert_" + ref))
                     .withPrimitiveTopology(PrimitiveTopology.TRIANGLE_FAN)
                     .withColorTargetState(NO_COLOR_WRITE)
-                    .withDepthStencilState(STENCIL_MUTATION_DEPTH)
-                    .withStencilTest(stencil(StencilOperation.INVERT, CompareOp.EQUAL, ref, STENCIL_MASK))
+                    .withDepthStencilState(withStencil(STENCIL_MUTATION_DEPTH,
+                            stencil(StencilOperation.INVERT, CompareOp.EQUAL, ref, STENCIL_MASK)))
                     .withCull(false)
                     .build();
             APERTURE_INVERT_TYPES[ref] = RenderType.create(
@@ -132,8 +134,8 @@ public final class ScopeStencilRenderTypes {
         }
     }
 
-    static RenderType clearStencil() {
-        return CLEAR_STENCIL;
+    static RenderPipeline clearStencilPipeline() {
+        return CLEAR_STENCIL_PIPELINE;
     }
 
     static RenderType ocularWrite(Identifier texture, int ref) {
@@ -207,14 +209,45 @@ public final class ScopeStencilRenderTypes {
                 .withShaderDefine("PER_FACE_LIGHTING")
                 .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
                 .withCull(false)
-                .withStencilTest(stencilTest);
-        if (colorTargetState != null) {
-            builder.withColorTargetState(colorTargetState);
-        }
-        if (depthStencilState != null) {
-            builder.withDepthStencilState(depthStencilState);
-        }
+                .withColorTargetState(colorTargetState == null ? ColorTargetState.DEFAULT : colorTargetState)
+                .withDepthStencilState(withStencil(depthStencilState == null ? DepthStencilState.DEFAULT : depthStencilState, stencilTest));
         return builder.build();
+    }
+
+    static DepthStencilState withStencil(DepthStencilState depth, StencilTest stencil) {
+        return new DepthStencilState(depth.depthTest(), depth.writeDepth(), depth.depthBiasScaleFactor(),
+                depth.depthBiasConstant(), stencil);
+    }
+
+    static PreparedRenderType withLegacyStencil(PreparedRenderType original, RenderPipeline template, boolean preserveDepth) {
+        return new PreparedRenderType(original.name(), legacyPipeline(original.pipeline(), template, preserveDepth),
+                original.oitPipelineSet(), original.dynamicTransforms(), original.scissorState(), original.textures());
+    }
+
+    static RenderPipeline legacyPipeline(RenderPipeline original, RenderPipeline template, boolean preserveDepth) {
+        return LEGACY_PIPELINES.computeIfAbsent(original, ignored -> new ConcurrentHashMap<>())
+                .computeIfAbsent(new LegacyVariant(template, preserveDepth), variant -> {
+                    DepthStencilState originalDepth = original.getDepthStencilState();
+                    // A missing depth state means no depth comparison or writes, not DEFAULT depth.
+                    DepthStencilState depth = preserveDepth
+                            ? (originalDepth == null ? ALWAYS_NO_DEPTH_WRITE : originalDepth)
+                            : template.getDepthStencilState();
+                    RenderPipeline.Builder builder = original.toBuilder()
+                            .withLocation(id("pipeline/scope_stencil/legacy/" + original.getLocation().getNamespace()
+                                    + "/" + original.getLocation().getPath() + "/" + template.getLocation().getPath()
+                                    + (preserveDepth ? "/original_depth" : "/optical_depth")))
+                            .withDepthStencilState(withStencil(depth, template.getDepthStencilState().stencilTest()));
+                    if (template.getColorTargetStates().getFirst().writeMask() == ColorTargetState.WRITE_NONE) {
+                        for (int i = 0; i < original.getColorTargetStates().size(); i++) {
+                            ColorTargetState color = original.getColorTargetStates().get(i);
+                            if (color != null) {
+                                builder.withColorTargetState(i,
+                                        new ColorTargetState(color.blendFunction(), color.format(), ColorTargetState.WRITE_NONE));
+                            }
+                        }
+                    }
+                    return builder.build();
+                });
     }
 
     private static StencilTest stencil(StencilOperation pass, CompareOp compare, int ref, int writeMask) {
@@ -234,5 +267,8 @@ public final class ScopeStencilRenderTypes {
     }
 
     private record TexturedRefKey(Identifier texture, int ref) {
+    }
+
+    private record LegacyVariant(RenderPipeline template, boolean preserveDepth) {
     }
 }

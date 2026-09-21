@@ -116,9 +116,9 @@ public class ShellRender implements IFunctionalRenderer {
         double xw = time * angularVelocity.x();
         double yw = time * angularVelocity.y();
         double zw = time * angularVelocity.z();
-        poseStack2.mulPose(Axis.XN.rotationDegrees((float) xw));
-        poseStack2.mulPose(Axis.YN.rotationDegrees((float) yw));
-        poseStack2.mulPose(Axis.ZP.rotationDegrees((float) zw));
+        poseStack2.rotate(Axis.XN.rotationDegrees((float) xw));
+        poseStack2.rotate(Axis.YN.rotationDegrees((float) yw));
+        poseStack2.rotate(Axis.ZP.rotationDegrees((float) zw));
         poseStack2.translate(0, -1.5, 0);
 
         model.render(poseStack2, transformType1, RenderTypes.entityCutout(location), light, overlay);

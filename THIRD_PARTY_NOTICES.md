@@ -56,6 +56,18 @@ replace the component license terms or grant additional rights.
 Fixed-version source URLs and SHA-256 checksums for these additional license
 texts are recorded in `META-INF/licenses/DECODER-LICENSE-SOURCES.md`.
 
+## Player Animator Core 1.0.2-rc1+1.20
+
+- Component: `dev.kosmx.player-anim:anim-core:1.0.2-rc1+1.20`.
+- Copyright (c) 2022 KosmX; MIT License.
+- Project: <https://github.com/KosmX/minecraftPlayerAnimator>.
+- Bundled license: `META-INF/licenses/PlayerAnimator-MIT.txt`. This outer-artifact
+  copy supplies the license missing from the unmodified nested core JAR.
+- License source, checked on 2026-09-21:
+  <https://raw.githubusercontent.com/KosmX/minecraftPlayerAnimator/cb2d79636cd53e7cdd5a7d46570826461c3b9fe4/LICENSE>.
+- Unmodified license SHA-256:
+  `b84d8d474a03c6dbc4066116b397ec2331c72090ba98cd3b9dec607ae72db9ed`.
+
 ## JglTF 3.0.1
 
 - Components: `jgltf-model`, `jgltf-impl-v1`, `jgltf-impl-v2`

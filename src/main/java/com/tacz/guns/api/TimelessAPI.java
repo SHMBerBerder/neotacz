@@ -117,8 +117,8 @@ public final class TimelessAPI {
     @Deprecated
     public static Optional<GunSmithTableRecipe> getRecipe(Identifier recipeId) {
         GunSmithTableRecipe cachedRecipe = CommonNetworkCache.INSTANCE.getRecipe(recipeId);
-        if (cachedRecipe != null) {
-            return Optional.of(cachedRecipe);
+        if (CommonNetworkCache.INSTANCE.hasRecipeSnapshot() || cachedRecipe != null) {
+            return Optional.ofNullable(cachedRecipe);
         }
         CommonAssetsManager assetsManager = CommonAssetsManager.getInstance();
         if (assetsManager != null && assetsManager.recipeManager != null) {
@@ -158,6 +158,9 @@ public final class TimelessAPI {
     public static Map<Identifier, GunSmithTableRecipe> getAllRecipes() {
         Map<Identifier, GunSmithTableRecipe> networkRecipes = new LinkedHashMap<>();
         CommonNetworkCache.INSTANCE.getAllRecipes().forEach(entry -> networkRecipes.put(entry.getKey(), entry.getValue()));
+        if (CommonNetworkCache.INSTANCE.hasRecipeSnapshot()) {
+            return networkRecipes;
+        }
         Map<Identifier, GunSmithTableRecipe> managerRecipes = new LinkedHashMap<>();
         CommonAssetsManager assetsManager = CommonAssetsManager.getInstance();
         if (assetsManager != null && assetsManager.recipeManager != null) {

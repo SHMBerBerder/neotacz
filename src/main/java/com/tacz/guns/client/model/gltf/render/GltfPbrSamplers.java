@@ -1,9 +1,9 @@
 package com.tacz.guns.client.model.gltf.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.tacz.guns.client.model.gltf.convert.GltfSamplerData;
 import com.tacz.guns.client.model.gltf.quality.TextureVariantPolicy;
 import de.javagl.jgltf.model.GltfConstants;

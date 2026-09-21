@@ -17,7 +17,7 @@ public class CompatRegistry {
 
     @SubscribeEvent
     public static void onEnqueue(final InterModEnqueueEvent event) {
-        event.enqueueWork(() -> checkModLoad(OCULUS, OculusCompat::initCompat));
+        event.enqueueWork(OculusCompat::initCompat);
         event.enqueueWork(() -> checkModLoad(CARRY_ON_ID, BlackList::addBlackList));
     }
 

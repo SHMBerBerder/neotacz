@@ -15,6 +15,7 @@ import com.tacz.guns.client.tooltip.GunTooltipTextBuilder;
 import com.tacz.guns.config.client.RenderConfig;
 import com.tacz.guns.init.ModItems;
 import com.tacz.guns.item.GunSmithTableItem;
+import com.tacz.guns.inventory.tooltip.AttachmentItemTooltip;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -53,7 +54,9 @@ public class TooltipEvent {
             GunTooltipTextBuilder.appendBlockText(tableItem.getBlockId(stack), event.getToolTip()::add);
             return;
         }
-        if (stack.getItem() instanceof IAttachment iAttachment) {
+        // Our image component owns attachment text; other implementations still need the fallback.
+        if (stack.getItem() instanceof IAttachment iAttachment
+                && stack.getTooltipImage().filter(AttachmentItemTooltip.class::isInstance).isEmpty()) {
             AttachmentTooltipTextBuilder.appendAttachmentText(
                     stack,
                     iAttachment.getAttachmentId(stack),

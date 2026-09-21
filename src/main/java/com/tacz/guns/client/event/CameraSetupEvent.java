@@ -4,7 +4,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 
 import com.github.mcmodderanchor.simplebedrockmodel.v1.client.handler.FirstPersonRenderHandler;
 import com.github.exopandora.shouldersurfing.api.client.IShoulderSurfingCamera;
-import com.github.exopandora.shouldersurfing.api.client.ShoulderSurfing;
+import com.github.exopandora.shouldersurfing.api.client.IShoulderSurfing;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.TimelessAPI;
@@ -257,8 +257,8 @@ public class CameraSetupEvent {
         long timeTotal = System.currentTimeMillis() - shootTimeStamp;
         if (pitchSplineFunction != null && pitchSplineFunction.isValidPoint(timeTotal)) {
             double value = pitchSplineFunction.value(timeTotal);
-            if (ShoulderSurfingCompat.isInstalled() && ShoulderSurfing.getInstance().isShoulderSurfing()) {
-                IShoulderSurfingCamera camera = ShoulderSurfing.getInstance().getCamera();
+            if (ShoulderSurfingCompat.isInstalled() && IShoulderSurfing.getInstance().isShoulderSurfing()) {
+                IShoulderSurfingCamera camera = IShoulderSurfing.getInstance().getCamera();
                 camera.setXRot(camera.getXRot() - (float) (value - xRotO));
             } else {
                 player.setXRot(player.getXRot() - (float) (value - xRotO));
@@ -267,8 +267,8 @@ public class CameraSetupEvent {
         }
         if (yawSplineFunction != null && yawSplineFunction.isValidPoint(timeTotal)) {
             double value = yawSplineFunction.value(timeTotal);
-            if (ShoulderSurfingCompat.isInstalled() && ShoulderSurfing.getInstance().isShoulderSurfing()) {
-                IShoulderSurfingCamera camera = ShoulderSurfing.getInstance().getCamera();
+            if (ShoulderSurfingCompat.isInstalled() && IShoulderSurfing.getInstance().isShoulderSurfing()) {
+                IShoulderSurfingCamera camera = IShoulderSurfing.getInstance().getCamera();
                 camera.setYRot(camera.getYRot() - (float) (value - yRotO));
             } else {
                 player.setYRot(player.getYRot() - (float) (value - yRotO));

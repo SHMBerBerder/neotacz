@@ -117,8 +117,8 @@ public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet, En
             Identifier textureLocation = ammoIndex.getAmmoEntityTextureLocation();
             if (ammoEntityModel != null && textureLocation != null) {
                 poseStack.pushPose();
-                poseStack.mulPose(Axis.YP.rotationDegrees(state.yRot - 180.0F));
-                poseStack.mulPose(Axis.XP.rotationDegrees(state.xRot));
+                poseStack.rotate(Axis.YP.rotationDegrees(state.yRot - 180.0F));
+                poseStack.rotate(Axis.XP.rotationDegrees(state.xRot));
                 poseStack.translate(0, 1.5, 0);
                 poseStack.scale(-1, -1, 1);
                 BedrockSubmitUtils.submitModel(
@@ -176,8 +176,8 @@ public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet, En
             double nearestSegmentDistance = distanceToSegment(state.shooterCurrentEyePosition, renderStartWorld, renderEndWorld);
             width *= state.tracerSize;
             width *= (float) Math.max(1.0, disToEye / 3.5);
-            poseStack.mulPose(Axis.YP.rotationDegrees(state.yRot - 180.0F));
-            poseStack.mulPose(Axis.XP.rotationDegrees(state.xRot));
+            poseStack.rotate(Axis.YP.rotationDegrees(state.yRot - 180.0F));
+            poseStack.rotate(Axis.XP.rotationDegrees(state.xRot));
             poseStack.translate(0, state.shooterIsLocalPlayer ? 0 : -0.2, trailLength / 2.0);
             poseStack.scale(width, width, (float) trailLength);
 
@@ -230,7 +230,8 @@ public class EntityBulletRenderer extends EntityRenderer<EntityKineticBullet, En
     }
 
     @Override
-    public boolean shouldRender(EntityKineticBullet bullet, Frustum camera, double pCamX, double pCamY, double pCamZ) {
+    public boolean shouldRender(EntityKineticBullet bullet, Frustum camera, double pCamX, double pCamY, double pCamZ, float partialTicks) {
+        // Vanilla's size-based distance cutoff hides tiny bullets; retain the legacy frustum-only gate.
         AABB aabb = bullet.getBoundingBox().inflate(0.5);
         if (aabb.hasNaN() || aabb.getSize() == 0) {
             aabb = new AABB(bullet.getX() - 2.0, bullet.getY() - 2.0, bullet.getZ() - 2.0, bullet.getX() + 2.0, bullet.getY() + 2.0, bullet.getZ() + 2.0);

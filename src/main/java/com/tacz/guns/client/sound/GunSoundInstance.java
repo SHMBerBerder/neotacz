@@ -61,8 +61,8 @@ public class GunSoundInstance extends AbstractSoundInstance {
     }
 
     @Override
-    public WeighedSoundEvents resolve(SoundManager manager) {
-        WeighedSoundEvents events = super.resolve(manager);
+    public WeighedSoundEvents getOrResolve(SoundManager manager) {
+        WeighedSoundEvents events = super.getOrResolve(manager);
         if (events != null && this.registryName != null) {
             this.redirectedSound = new TaczSound(this.registryName, TACZ_SOUND_LISTER.idToFile(this.registryName), super.getSound());
             this.sound = this.redirectedSound;

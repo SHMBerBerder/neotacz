@@ -1,0 +1,29 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0,
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "condition": {
+            "type": "minecraft:match_block",
+            "blocks": "tacz:target",
+            "state": {
+              "half": "lower"
+            }
+          },
+          "modifier": {
+            "type": "minecraft:copy_name",
+            "source": "block_entity"
+          },
+          "name": "tacz:target"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

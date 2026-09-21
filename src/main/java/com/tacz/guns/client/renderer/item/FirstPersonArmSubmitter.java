@@ -15,6 +15,7 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.PlayerRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.HumanoidArm;
@@ -46,12 +47,20 @@ public final class FirstPersonArmSubmitter {
         for (BedrockPart bedrockPart : anchorPath) {
             bedrockPart.translateAndRotateAndScale(handPose);
         }
-        handPose.mulPose(Axis.ZP.rotationDegrees(180f));
-        if (ClientHooks.renderSpecificFirstPersonArm(handPose, submitNodeCollector, light, player, arm)) {
+        handPose.rotate(Axis.ZP.rotationDegrees(180f));
+        Minecraft minecraft = Minecraft.getInstance();
+        AvatarRenderer<?> renderer = (AvatarRenderer<?>) minecraft.getEntityRenderDispatcher().getRenderer(player);
+        Identifier skinTexture = player.getSkin().body().texturePath();
+        boolean sleeveVisible = player.isModelPartShown(arm == HumanoidArm.RIGHT ? PlayerModelPart.RIGHT_SLEEVE : PlayerModelPart.LEFT_SLEEVE);
+        ModelPart armPart = arm == HumanoidArm.RIGHT ? renderer.getModel().rightArm : renderer.getModel().leftArm;
+        // Armor hooks must consume the same extracted player as this frame, not a synthetic or stale avatar.
+        PlayerRenderState playerState = minecraft.gameRenderer.gameRenderState().levelRenderState.playerRenderState;
+        if (playerState.avatarRenderState != null && playerState.avatarRenderState.id == player.getId()
+                && ClientHooks.renderSpecificFirstPersonArm(handPose, submitNodeCollector, light, skinTexture,
+                sleeveVisible, playerState, arm, armPart)) {
             return;
         }
 
-        Identifier skinTexture = player.getSkin().body().texturePath();
         RenderHelper.submitCustomGeometry(submitNodeCollector, handPose, RenderTypes.entityTranslucent(skinTexture), (pose, buffer) -> {
             PoseStack callbackPoseStack = new PoseStack();
             callbackPoseStack.last().pose().set(pose.pose());
@@ -78,13 +87,13 @@ public final class FirstPersonArmSubmitter {
         for (BedrockPart bedrockPart : anchorPath) {
             bedrockPart.translateAndRotateAndScale(handPose);
         }
-        handPose.mulPose(Axis.ZP.rotationDegrees(180f));
+        handPose.rotate(Axis.ZP.rotationDegrees(180f));
         renderArmModelPart(player, arm, handPose, buffer, light);
     }
 
     private static void renderArmModelPart(AbstractClientPlayer player, HumanoidArm arm, PoseStack poseStack,
                                            VertexConsumer buffer, int light) {
-        AvatarRenderer<AbstractClientPlayer> renderer = Minecraft.getInstance().getEntityRenderDispatcher().getPlayerRenderer(player);
+        AvatarRenderer<?> renderer = (AvatarRenderer<?>) Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(player);
         PlayerModel model = renderer.getModel();
         ModelPart armPart = arm == HumanoidArm.RIGHT ? model.rightArm : model.leftArm;
         ModelPart sleevePart = arm == HumanoidArm.RIGHT ? model.rightSleeve : model.leftSleeve;

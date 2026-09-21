@@ -5,7 +5,7 @@ import com.tacz.guns.api.event.common.KubeJSGunEventPoster;
 import net.neoforged.bus.api.Event;
 
 /**
- * 在调用 ItemInHandRenderer#submitHandsWithItems 方法时触发该事件
+ * 在调用 FirstPersonHandsAndItemsRenderer#submitHandsWithItems 方法时触发该事件
  * 用于相机动画相关调用
  */
 public class BeforeRenderHandEvent extends Event implements KubeJSGunEventPoster<BeforeRenderHandEvent> {

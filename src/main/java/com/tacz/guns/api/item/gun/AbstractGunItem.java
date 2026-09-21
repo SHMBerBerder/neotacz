@@ -20,15 +20,22 @@ import com.tacz.guns.util.AttachmentDataUtils;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemHandlerHelper;
+import net.neoforged.neoforge.transfer.ResourceHandler;
+import net.neoforged.neoforge.transfer.ResourceHandlerUtil;
+import net.neoforged.neoforge.transfer.item.ItemResource;
+import net.neoforged.neoforge.transfer.item.ItemUtil;
+import net.neoforged.neoforge.transfer.item.PlayerInventoryWrapper;
+import net.neoforged.neoforge.transfer.transaction.Transaction;
 
 import javax.annotation.Nonnull;
 import java.util.*;
@@ -142,8 +149,8 @@ public abstract class AbstractGunItem extends Item implements IGun, IAnimationIt
         // 检查背包内的弹药数量
         return InventoryHandlerUtils.of(shooter).map(cap -> {
             // 背包检查
-            for (int i = 0; i < cap.getSlots(); i++) {
-                ItemStack checkAmmoStack = cap.getStackInSlot(i);
+            for (int i = 0; i < cap.size(); i++) {
+                ItemStack checkAmmoStack = ItemUtil.getStack(cap, i);
                 if (checkAmmoStack.getItem() instanceof IAmmo iAmmo && iAmmo.isAmmoOfGun(gunItem, checkAmmoStack)) {
                     return true;
                 }
@@ -198,14 +205,31 @@ public abstract class AbstractGunItem extends Item implements IGun, IAnimationIt
                 return;
             }
             TimelessAPI.getCommonAmmoIndex(ammoId).ifPresent(ammoIndex -> {
-                int stackSize = ammoIndex.getStackSize();
-                int tmpAmmoCount = ammoCount;
-                int roundCount = tmpAmmoCount / (stackSize + 1);
-                for (int i = 0; i <= roundCount; i++) {
-                    int count = Math.min(tmpAmmoCount, stackSize);
+                int remaining = ammoCount;
+                // CommonAmmoIndex validates stackSize >= 1. Keep the original main-inventory and drop behavior.
+                while (remaining > 0) {
+                    int count = Math.min(remaining, ammoIndex.getStackSize());
                     ItemStack ammoItem = AmmoItemBuilder.create().setId(ammoId).setCount(count).build();
-                    ItemHandlerHelper.giveItemToPlayer(player, ammoItem);
-                    tmpAmmoCount -= stackSize;
+                    int inserted;
+                    try (Transaction transaction = Transaction.openRoot()) {
+                        inserted = ResourceHandlerUtil.insertStacking(PlayerInventoryWrapper.of(player).getMainSlots(),
+                                ItemResource.of(ammoItem), count, transaction);
+                        transaction.commit();
+                    }
+                    var level = player.level();
+                    if (inserted > 0) {
+                        level.playSound(null, player.getX(), player.getY() + 0.5, player.getZ(),
+                                SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F,
+                                ((level.getRandom().nextFloat() - level.getRandom().nextFloat()) * 0.7F + 1.0F) * 2.0F);
+                    }
+                    if (inserted < count && !level.isClientSide()) {
+                        ItemEntity dropped = new ItemEntity(level, player.getX(), player.getY() + 0.5, player.getZ(),
+                                ammoItem.copyWithCount(count - inserted));
+                        dropped.setPickUpDelay(40);
+                        dropped.setDeltaMovement(dropped.getDeltaMovement().multiply(0, 1, 0));
+                        level.addFreshEntity(dropped);
+                    }
+                    remaining -= count;
                 }
                 setCurrentAmmoCount(gunItem, 0);
             });
@@ -220,7 +244,7 @@ public abstract class AbstractGunItem extends Item implements IGun, IAnimationIt
      * @return 寻找到的弹药 (物品) 数量
      */
     @Deprecated
-    public int findAndExtractInventoryAmmos(IItemHandler itemHandler, ItemStack gunItem, int needAmmoCount) {
+    public int findAndExtractInventoryAmmos(ResourceHandler<ItemResource> itemHandler, ItemStack gunItem, int needAmmoCount) {
         return findAndExtractInventoryAmmo(itemHandler, gunItem, needAmmoCount);
     }
 
@@ -231,31 +255,35 @@ public abstract class AbstractGunItem extends Item implements IGun, IAnimationIt
      * @param needAmmoCount 需要的弹药 (物品) 数量
      * @return 寻找到的弹药 (物品) 数量
      */
-    public int findAndExtractInventoryAmmo(IItemHandler itemHandler, ItemStack gunItem, int needAmmoCount) {
+    public int findAndExtractInventoryAmmo(ResourceHandler<ItemResource> itemHandler, ItemStack gunItem, int needAmmoCount) {
+        if (needAmmoCount <= 0) {
+            return 0;
+        }
         int cnt = needAmmoCount;
-        // 背包检查
-        for (int i = 0; i < itemHandler.getSlots(); i++) {
-            ItemStack checkAmmoStack = itemHandler.getStackInSlot(i);
-            if (checkAmmoStack.getItem() instanceof IAmmo iAmmo && iAmmo.isAmmoOfGun(gunItem, checkAmmoStack)) {
-                ItemStack extractItem = itemHandler.extractItem(i, cnt, false);
-                cnt = cnt - extractItem.getCount();
-                if (cnt <= 0) {
-                    break;
+        try (Transaction transaction = Transaction.openRoot()) {
+            // Preserve slot order, including ammo boxes interleaved with loose rounds.
+            for (int i = 0; i < itemHandler.size() && cnt > 0; i++) {
+                ItemStack checkAmmoStack = ItemUtil.getStack(itemHandler, i);
+                if (checkAmmoStack.getItem() instanceof IAmmo iAmmo && iAmmo.isAmmoOfGun(gunItem, checkAmmoStack)) {
+                    cnt -= itemHandler.extract(i, ItemResource.of(checkAmmoStack), cnt, transaction);
+                }
+                if (cnt > 0 && checkAmmoStack.getItem() instanceof IAmmoBox iAmmoBox && iAmmoBox.isAmmoBoxOfGun(gunItem, checkAmmoStack)) {
+                    int boxAmmoCount = iAmmoBox.getAmmoCount(checkAmmoStack);
+                    int extractCount = Math.min(Math.max(boxAmmoCount, 0), cnt);
+                    if (extractCount == 0) {
+                        continue;
+                    }
+                    int remainCount = boxAmmoCount - extractCount;
+                    iAmmoBox.setAmmoCount(checkAmmoStack, remainCount);
+                    if (remainCount <= 0) {
+                        iAmmoBox.setAmmoId(checkAmmoStack, DefaultAssets.EMPTY_AMMO_ID);
+                    }
+                    if (InventoryHandlerUtils.replaceStack(itemHandler, i, checkAmmoStack, transaction)) {
+                        cnt -= extractCount;
+                    }
                 }
             }
-            if (checkAmmoStack.getItem() instanceof IAmmoBox iAmmoBox && iAmmoBox.isAmmoBoxOfGun(gunItem, checkAmmoStack)) {
-                int boxAmmoCount = iAmmoBox.getAmmoCount(checkAmmoStack);
-                int extractCount = Math.min(boxAmmoCount, cnt);
-                int remainCount = boxAmmoCount - extractCount;
-                iAmmoBox.setAmmoCount(checkAmmoStack, remainCount);
-                if (remainCount <= 0) {
-                    iAmmoBox.setAmmoId(checkAmmoStack, DefaultAssets.EMPTY_AMMO_ID);
-                }
-                cnt = cnt - extractCount;
-                if (cnt <= 0) {
-                    break;
-                }
-            }
+            transaction.commit();
         }
         return needAmmoCount - cnt;
     }
@@ -411,8 +439,8 @@ public abstract class AbstractGunItem extends Item implements IGun, IAnimationIt
         // 检查背包内的弹药数量
         return InventoryHandlerUtils.of(shooter).map(cap -> {
             // 背包检查
-            for (int i = 0; i < cap.getSlots(); i++) {
-                ItemStack checkAmmoStack = cap.getStackInSlot(i);
+            for (int i = 0; i < cap.size(); i++) {
+                ItemStack checkAmmoStack = ItemUtil.getStack(cap, i);
                 if (checkAmmoStack.getItem() instanceof IAmmo iAmmo && iAmmo.isAmmoOfGun(gun, checkAmmoStack)) {
                     return true;
                 }

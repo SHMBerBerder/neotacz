@@ -36,11 +36,11 @@ public class GunPackProgressScreen extends Screen implements ProgressListener {
             MinecraftGuiCompat.setScreen(null);
         } else {
             if (this.header != null) {
-                gui.centeredText(this.font, this.header, this.width / 2, 70, 16777215);
+                gui.centeredText(this.font, this.header, this.width / 2, 70, 0xFFFFFFFF);
             }
             if (this.stage != null && this.progress > 0) {
                 MutableComponent text = this.stage.copy().append(" " + this.progress + "%");
-                gui.centeredText(this.font, text, this.width / 2, 90, 16777215);
+                gui.centeredText(this.font, text, this.width / 2, 90, 0xFFFFFFFF);
             }
             super.extractRenderState(gui, mouseX, mouseY, partialTick);
         }

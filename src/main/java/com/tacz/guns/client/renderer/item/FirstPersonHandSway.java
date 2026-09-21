@@ -37,8 +37,8 @@ public final class FirstPersonHandSway {
     }
 
     void cancelVanillaHandDelay(PoseStack poseStack) {
-        poseStack.mulPose(Axis.XP.rotationDegrees(cancelX * VANILLA_HAND_DELAY_SCALE));
-        poseStack.mulPose(Axis.YP.rotationDegrees(cancelY * VANILLA_HAND_DELAY_SCALE));
+        poseStack.rotate(Axis.XP.rotationDegrees(cancelX * VANILLA_HAND_DELAY_SCALE));
+        poseStack.rotate(Axis.YP.rotationDegrees(cancelY * VANILLA_HAND_DELAY_SCALE));
     }
 
     void applyTo(@Nullable BedrockPart rootNode) {

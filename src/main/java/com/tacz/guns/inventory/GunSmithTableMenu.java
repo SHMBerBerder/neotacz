@@ -8,9 +8,11 @@ import com.tacz.guns.crafting.GunSmithTableRecipe;
 import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.ServerMessageCraft;
 import com.tacz.guns.resource.filter.RecipeFilter;
+import com.tacz.guns.resource.CommonAssetsManager;
+import com.tacz.guns.GunMod;
 import com.tacz.guns.resource.index.CommonBlockIndex;
 import com.tacz.guns.util.GunSmithTableBlockIds;
-import it.unimi.dsi.fastutil.ints.Int2IntArrayMap;
+import com.tacz.guns.util.InventoryHandlerUtils;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.Identifier;
@@ -25,7 +27,7 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
-import net.neoforged.neoforge.items.wrapper.InvWrapper;
+import net.neoforged.neoforge.transfer.transaction.Transaction;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -70,7 +72,20 @@ public class GunSmithTableMenu extends AbstractContainerMenu {
         }
 
         Recipe<?> recipe = recipeManager.byKey(ResourceKey.create(Registries.RECIPE, recipeId)).map(holder -> holder.value()).orElse(null);
+        if (recipe == null) {
+            CommonAssetsManager assets = CommonAssetsManager.getInstance();
+            recipe = assets == null ? null : assets.getServerRecipe(recipeId);
+        }
         if (recipe instanceof GunSmithTableRecipe gunSmithTableRecipe) {
+            try {
+                gunSmithTableRecipe.init();
+                if (gunSmithTableRecipe.getOutput().isEmpty() || gunSmithTableRecipe.getTab() == null) {
+                    return null;
+                }
+            } catch (RuntimeException exception) {
+                GunMod.LOGGER.warn("Failed to initialize requested gun smith table recipe {}", recipeId, exception);
+                return null;
+            }
             boolean flag = TimelessAPI.getCommonBlockIndex(getBlockId()).map(blockIndex -> {
                 return blockIndex.getData().getTabs().stream().noneMatch(tab -> tab.id().equals(gunSmithTableRecipe.getTab()));
             }).orElse(true);
@@ -94,41 +109,21 @@ public class GunSmithTableMenu extends AbstractContainerMenu {
         if (recipe == null) {
             return;
         }
-        InvWrapper handler = new InvWrapper(player.getInventory());
         // 是创造模式，就不扣材料
         if (!player.isCreative()) {
-            Int2IntArrayMap recordCount = new Int2IntArrayMap();
-            List<GunSmithTableIngredient> ingredients = recipe.getInputs();
-
-            for (GunSmithTableIngredient ingredient : ingredients) {
-                int count = 0;
-                for (int slotIndex = 0; slotIndex < handler.getSlots(); slotIndex++) {
-                    ItemStack stack = handler.getStackInSlot(slotIndex);
-                    int stackCount = stack.getCount();
-                    if (!stack.isEmpty() && ingredient.getIngredient().test(stack)) {
-                        count = count + stackCount;
-                        // 记录扣除的 slot 和数量
-                        if (count <= ingredient.getCount()) {
-                            // 如果数量不足，全扣
-                            recordCount.put(slotIndex, stackCount);
-                        } else {
-                            //  数量够了，只扣需要的数量
-                            int remaining = count - ingredient.getCount();
-                            recordCount.put(slotIndex, stackCount - remaining);
-                            break;
-                        }
+            // Capture once: recipes include every inventory slot, including body armor and saddle.
+            var slots = InventoryHandlerUtils.forContainerContents(player.getInventory());
+            try (Transaction transaction = Transaction.openRoot()) {
+                for (GunSmithTableIngredient ingredient : recipe.getInputs()) {
+                    int extracted = InventoryHandlerUtils.extractMatching(slots, ingredient.getIngredient()::test,
+                            ingredient.getCount(), transaction);
+                    if (extracted != ingredient.getCount()) {
+                        return;
                     }
                 }
-                // 数量不够，不执行后续逻辑，合成失败
-                if (count < ingredient.getCount()) {
-                    return;
-                }
+                transaction.commit();
             }
-
-            // 开始扣材料
-            for (int slotIndex : recordCount.keySet()) {
-                handler.extractItem(slotIndex, recordCount.get(slotIndex), false);
-            }
+            player.getInventory().setChanged();
         }
 
         // 给玩家对应的物品

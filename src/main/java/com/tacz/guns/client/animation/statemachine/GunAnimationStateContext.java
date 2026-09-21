@@ -26,6 +26,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.transfer.item.ItemUtil;
 import org.joml.Vector3f;
 import org.luaj.vm2.LuaTable;
 
@@ -184,8 +185,8 @@ public class GunAnimationStateContext extends ItemAnimationStateContext {
                     return InventoryHandlerUtils.of(livingEntity)
                         .map(cap -> {
                             // 背包检查
-                            for (int i = 0; i < cap.getSlots(); i++) {
-                                ItemStack checkAmmoStack = cap.getStackInSlot(i);
+                            for (int i = 0; i < cap.size(); i++) {
+                                ItemStack checkAmmoStack = ItemUtil.getStack(cap, i);
                                 if (checkAmmoStack.getItem() instanceof IAmmo iAmmo && iAmmo.isAmmoOfGun(currentGunItem, checkAmmoStack)) {
                                     return true;
                                 }

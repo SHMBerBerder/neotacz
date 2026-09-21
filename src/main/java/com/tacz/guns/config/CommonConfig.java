@@ -6,11 +6,13 @@ import com.tacz.guns.config.common.OtherConfig;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 public final class CommonConfig {
+    public static ModConfigSpec SPEC;
+
     public static ModConfigSpec init() {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
         GunConfig.init(builder);
         AmmoConfig.init(builder);
         OtherConfig.init(builder);
-        return builder.build();
+        return SPEC = builder.build();
     }
 }

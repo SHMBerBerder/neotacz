@@ -47,48 +47,9 @@ public class AttachmentRender implements IFunctionalRenderer {
         return true;
     }
 
-    public static void renderAttachment(ItemStack attachmentItem, ItemStack gunItem, PoseStack poseStack, ItemDisplayContext transformType, int light, int overlay) {
-        if (attachmentItem.getItem() instanceof IAttachment attachment) {
-            var index = TimelessAPI.getClientAttachmentIndex(attachment.getAttachmentId(attachmentItem));
-            if (index.isPresent() && index.get().usesMeshRenderModel()) {
-                SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
-                if (collector != null) {
-                    submitMeshAttachment(index.get(), attachmentItem, gunItem, poseStack, collector,
-                            transformType, light, overlay, false);
-                }
-                return;
-            }
-        }
-        poseStack.translate(0, -1.5, 0);
-        if (attachmentItem.getItem() instanceof IAttachment iAttachment) {
-            Identifier attachmentId = iAttachment.getAttachmentId(attachmentItem);
-            TimelessAPI.getClientAttachmentIndex(attachmentId).ifPresentOrElse(attachmentIndex -> {
-                BedrockAttachmentModel model = attachmentIndex.getAttachmentModel();
-                Identifier texture = attachmentIndex.getModelTexture();
-                // 这里是枪械里的配件渲染，没有模型材质就不渲染
-                if (model != null && texture != null) {
-                    // 调用低模
-                    Pair<BedrockAttachmentModel, Identifier> lodModel = attachmentIndex.getLodModel();
-                    // 有低模、在高模渲染范围外、不是第一人称
-                    if (lodModel != null && !RenderDistance.inRenderHighPolyModelDistance(poseStack) && !transformType.firstPerson()) {
-                        model = lodModel.getLeft();
-                        texture = lodModel.getRight();
-                    }
-                    RenderType renderType = RenderTypes.entityCutout(texture);
-                    model.render(attachmentItem, gunItem, poseStack, transformType, renderType, light, overlay);
-                } else {
-                    debugSkippedAttachment(attachmentId, "missing model or texture", model != null, texture != null, transformType);
-                }
-            }, () -> {
-                debugSkippedAttachment(attachmentId, "missing client attachment index", false, false, transformType);
-                // 没有对应的 attachmentIndex，渲染黑紫材质以提醒
-                SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
-                if (collector != null) {
-                    AttachmentItemRenderer.SLOT_ATTACHMENT_MODEL.submit(
-                            poseStack, collector, RenderTypes.entityTranslucent(MissingTextureAtlasSprite.getLocation()), light, overlay);
-                }
-            });
-        }
+    public static void renderAttachment(ItemStack attachmentItem, ItemStack gunItem, PoseStack poseStack,
+                                        ItemDisplayContext transformType, int light, int overlay) {
+        submitMountedAttachment(attachmentItem, gunItem, poseStack, transformType, light, overlay);
     }
 
     public static int submitMountedAttachment(ItemStack attachmentItem, ItemStack gunItem, PoseStack poseStack,
@@ -140,7 +101,7 @@ public class AttachmentRender implements IFunctionalRenderer {
             if (ScopeStencilFeatureRenderer.submitAttachmentSemantics(model, attachmentItem, gunItem, poseStack,
                     collector, transformType, texture, false, activeScopeViewIndex(attachmentIndex.get(), attachmentItem),
                     light, overlay)) {
-                model.submitInstalledSemantics(attachmentItem, gunItem, poseStack, transformType);
+                model.submitInstalledSemantics(attachmentItem, gunItem, poseStack, transformType, light, overlay);
                 return BedrockGunModel.SCOPE_GUN_CLIP_NONE;
             }
             return model.submitInstalled(attachmentItem, gunItem, poseStack, collector, transformType, renderType, texture, light, overlay);
@@ -165,7 +126,7 @@ public class AttachmentRender implements IFunctionalRenderer {
         mountPose.pushPose();
         try {
             mountPose.translate(0, -1.5, 0);
-            semantics.submitInstalledSemantics(attachmentItem, gunItem, mountPose, context);
+            semantics.submitInstalledSemantics(attachmentItem, gunItem, mountPose, context, light, overlay);
             if (!integratedScopeExpected && texture != null) {
                 ScopeStencilFeatureRenderer.submitAttachmentSemantics(semantics, attachmentItem, gunItem, mountPose,
                         collector, context, texture, true, activeScopeViewIndex(index, attachmentItem), light, overlay);

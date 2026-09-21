@@ -2,6 +2,12 @@ package com.tacz.guns.client.model.functional;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
@@ -17,8 +23,12 @@ import com.tacz.guns.util.LaserColorUtil;
 import net.minecraft.util.LightCoordsUtil;
 import com.tacz.guns.util.RenderHelper;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.BindGroupLayouts;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.oit.OitPipelineSet;
+import net.minecraft.client.renderer.rendertype.LayeringTransform;
+import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
@@ -89,7 +99,7 @@ public class BeamRenderer  {
         return DEFAULT_LASER_CONFIG;
     }
 
-    private static void stringVertex(float z, float width, VertexConsumer pConsumer, PoseStack.Pose pPose, int r, int g, int b, boolean fadeOut) {
+    static void stringVertex(float z, float width, VertexConsumer pConsumer, PoseStack.Pose pPose, int r, int g, int b, boolean fadeOut) {
         float halfWidth = width / 2;
         int endAlpha = fadeOut ? 0 : 255;
         int light = LightCoordsUtil.pack(15, 15);
@@ -125,8 +135,47 @@ public class BeamRenderer  {
     }
 
     public static class LaserBeamRenderState {
-        protected static final RenderType LASER_BEAM = RenderTypes.entityTranslucentEmissive(LASER_BEAM_TEXTURE);
-		protected static final RenderType LASER_BEAM_ENTITY = RenderTypes.entityTranslucentEmissive(LASER_BEAM_TEXTURE);
+        private static final RenderPipeline.Snippet BEAM_SNIPPET = RenderPipeline.builder()
+                .withVertexShader("core/position_tex_color")
+                .withFragmentShader(Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "core/laser_beam"))
+                .withBindGroupLayout(BindGroupLayouts.PROJECTION)
+                .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+                .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+                .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+                .withPrimitiveTopology(PrimitiveTopology.QUADS)
+                .withCull(false)
+                .buildSnippet();
+        static final OitPipelineSet LASER_BEAM_OIT = OitPipelineSet.builder(
+                Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "laser_beam"),
+                RenderPipeline.builder(BEAM_SNIPPET).withShaderDefine("OIT_ADDITIVE")).build();
+        static final OitPipelineSet LASER_BEAM_ENTITY_OIT = OitPipelineSet.builder(
+                Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "laser_beam_entity"),
+                RenderPipeline.builder(RenderPipelines.OIT_ENTITY_SNIPPET).withCull(false).withShaderDefine("OIT_ADDITIVE"))
+                .withAccumulateModifier(builder -> builder.withShaderDefine("PER_FACE_LIGHTING")
+                        .withShaderDefine("EMISSIVE").withBindGroupLayout(BindGroupLayouts.SAMPLER1))
+                .build();
+        // The old ordinary beam had no fog and cut off combined alpha. Its entity/AR variant
+        // intentionally used the emissive entity shader instead; these are not interchangeable.
+        protected static final RenderType LASER_BEAM = createBeam("laser_beam",
+                RenderPipeline.builder(BEAM_SNIPPET), LASER_BEAM_OIT, false);
+        protected static final RenderType LASER_BEAM_ENTITY = createBeam("laser_beam_entity",
+                RenderPipelines.ENTITY_TRANSLUCENT_EMISSIVE.toBuilder(), LASER_BEAM_ENTITY_OIT, true);
+
+        private static RenderType createBeam(String name, RenderPipeline.Builder builder,
+                                             OitPipelineSet oit, boolean entity) {
+            RenderPipeline pipeline = builder.withLocation(Identifier.fromNamespaceAndPath(GunMod.MOD_ID, "pipeline/" + name))
+                    // OVERLAY has the old beam's exact (SRC_ALPHA, ONE, ONE, ZERO) factors.
+                    .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+                    .withDepthStencilState(DepthStencilState.DEFAULT)
+                    .withCull(false)
+                    .build();
+            var setup = RenderSetup.builder(pipeline).setOitPipelines(oit)
+                    .withTexture("Sampler0", LASER_BEAM_TEXTURE)
+                    .setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING)
+                    .sortOnUpload();
+            if (entity) setup.useOverlay();
+            return RenderType.create(name, setup.createRenderSetup());
+        }
 
         public static RenderType getLaserBeam() {
             return LASER_BEAM;

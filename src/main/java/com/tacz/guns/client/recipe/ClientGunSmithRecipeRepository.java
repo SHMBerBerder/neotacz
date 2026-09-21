@@ -73,6 +73,9 @@ public final class ClientGunSmithRecipeRepository {
                 CommonNetworkCache.INSTANCE.getAllRecipes()
         );
         sources.add(new Source(SourceKind.NETWORK_CACHE, networkRecipes));
+        if (CommonNetworkCache.INSTANCE.hasRecipeSnapshot()) {
+            return sources;
+        }
 
         // MC 26.1 ClientLevel only exposes RecipeAccess display/property data, not raw custom recipe holders.
         // Remote clients therefore use TACZ's network cache; integrated clients can still fall back to the server RecipeManager.

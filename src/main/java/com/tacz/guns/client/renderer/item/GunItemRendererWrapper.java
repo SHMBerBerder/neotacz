@@ -219,7 +219,7 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             float zoom = iGun.getAimingZoom(stack);
             float multiplier = 1 - aimingProgress + aimingProgress / (float) Math.sqrt(zoom);
             Quaternionf quaternion = MathUtil.multiplyQuaternion(model.getCameraAnimationObject().rotationQuaternion, multiplier);
-            poseStack.mulPose(quaternion);
+            poseStack.rotate(quaternion);
             // 截至目前，摄像机动画数据已消费完毕。是否有更好的清理动画数据的方法？
             model.cleanCameraAnimationTransform();
         });
@@ -257,7 +257,8 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             // 从渲染原点 (0, 24, 0) 移动到模型原点 (0, 0, 0)
             poseStack.translate(0, 1.5f, 0);
             // 基岩版模型是上下颠倒的，需要翻转过来。
-            poseStack.mulPose(Axis.ZP.rotationDegrees(180f));
+            poseStack.rotate(Axis.ZP.rotationDegrees(180f));
+            try {
             // 应用持枪姿态变换，如第一人称摄像机定位
             FirstPersonRenderGunEvent.applyFirstPersonGunTransform(player, stack, poseStack, gunModel, partialTick);
 
@@ -272,32 +273,21 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
                     ? RenderTypes.entityTranslucent(display.getModelTexture())
                     : RenderTypes.entityCutout(display.getModelTexture());
             boolean finalRenderHandForCallback = renderHandForCallback;
+            BedrockGunModel.PreparedRender preparedRender = gunModel.prepareRender(submitNodeCollector, poseStack,
+                    player, stack, ctx, baseRenderType, display.getModelTexture(), light, OverlayTexture.NO_OVERLAY,
+                    FIRST_PERSON_GUN_BODY_ORDER, handSway, finalRenderHandForCallback, false);
             boolean previousRenderHand = gunModel.getRenderHand();
             MuzzleFlashRender.isSelf = true;
             ShellRender.isSelf = true;
             gunModel.setRenderHand(finalRenderHandForCallback);
             try {
-                handSway.withTemporaryModelSway(rootNode, () -> RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
-                        RenderHelper.withDeferredFunctionalRendererCollection(() ->
-                                gunModel.collectDeferredFunctionalRenderers(poseStack, stack, ctx, light, OverlayTexture.NO_OVERLAY))));
+                preparedRender.collectDeferredFunctionalRenderers(poseStack);
             } finally {
                 gunModel.setRenderHand(previousRenderHand);
                 MuzzleFlashRender.isSelf = false;
                 ShellRender.isSelf = false;
             }
-            boolean scopeStencilPassSubmitted = gunModel.submitFirstPersonScopeStencilPass(
-                    submitNodeCollector,
-                    poseStack,
-                    player,
-                    stack,
-                    ctx,
-                    baseRenderType,
-                    display.getModelTexture(),
-                    light,
-                    OverlayTexture.NO_OVERLAY,
-                    FIRST_PERSON_GUN_BODY_ORDER,
-                    handSway,
-                    finalRenderHandForCallback);
+            boolean scopeStencilPassSubmitted = preparedRender.submitScope();
             boolean[] customBodySubmitted = {false};
             if (!scopeStencilPassSubmitted && gunModel.hasCustomBodyRenderer()) {
                 handSway.withTemporaryModelSway(rootNode, () -> customBodySubmitted[0] = gunModel.submitCustomBody(
@@ -306,17 +296,8 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             }
             if (!scopeStencilPassSubmitted && !customBodySubmitted[0] && !display.usesMeshRenderModel()) {
                 submitFirstPersonGunBodyGeometry(submitNodeCollector, poseStack, baseRenderType, (callbackPoseStack, buffer) -> {
-                    boolean callbackPreviousRenderHand = gunModel.getRenderHand();
-                    gunModel.setRenderHand(finalRenderHandForCallback);
-                    try {
-                        handSway.applyTo(rootNode);
-                        RenderHelper.withDeferredRenderersSuppressed(() ->
-                                RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
-                                        gunModel.renderToBuffer(callbackPoseStack, stack, ctx, buffer, light, OverlayTexture.NO_OVERLAY)));
-                    } finally {
-                        gunModel.setRenderHand(callbackPreviousRenderHand);
-                        gunModel.cleanAnimationTransform();
-                    }
+                    RenderHelper.withSubmitNodeCollector(submitNodeCollector, () ->
+                            preparedRender.renderGunBodyToBuffer(callbackPoseStack, buffer));
                 });
             }
             if (!scopeStencilPassSubmitted && finalRenderHandForCallback) {
@@ -326,10 +307,11 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
             // 缓存枪口位置，为第一人称曳光弹渲染作准备
             handSway.withTemporaryModelSway(rootNode, () ->
                     cacheMuzzlePosition(poseStack, gunModel, player.getId(), iGun.getGunId(stack), iGun.getGunDisplayId(stack)));
-            if (customBodySubmitted[0]) {
+            } finally {
+                // Animation listeners blend into these values; reset after all frame snapshots are captured.
                 gunModel.cleanAnimationTransform();
+                poseStack.popPose();
             }
-            poseStack.popPose();
         }, GunItemRendererWrapper::clearMuzzleRenderOffset);
     }
 
@@ -480,7 +462,7 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
 
     private static void submitSlotTexture(PoseStack poseStack, SubmitNodeCollector submitNodeCollector, int packedLight, int packedOverlay, Identifier texture) {
         poseStack.translate(0.5, 1.5, 0.5);
-        poseStack.mulPose(Axis.ZN.rotationDegrees(180));
+        poseStack.rotate(Axis.ZN.rotationDegrees(180));
         RenderType renderType = RenderTypes.entityTranslucent(texture);
         submitModelGeometry(submitNodeCollector, poseStack, renderType, (callbackPoseStack, buffer) ->
                 SLOT_GUN_MODEL.renderToBuffer(callbackPoseStack, buffer, packedLight, packedOverlay, 1.0F, 1.0F, 1.0F, 1.0F));
@@ -523,9 +505,9 @@ public class GunItemRendererWrapper extends AnimateGeoItemRenderer<BedrockGunMod
         poseStack.translate(0, 1.5, 0);
         for (int i = nodePath.size() - 1; i >= 0; i--) {
             BedrockPart t = nodePath.get(i);
-            poseStack.mulPose(Axis.XN.rotation(t.xRot));
-            poseStack.mulPose(Axis.YN.rotation(t.yRot));
-            poseStack.mulPose(Axis.ZN.rotation(t.zRot));
+            poseStack.rotate(Axis.XN.rotation(t.xRot));
+            poseStack.rotate(Axis.YN.rotation(t.yRot));
+            poseStack.rotate(Axis.ZN.rotation(t.zRot));
             if (t.getParent() != null) {
                 poseStack.translate(-t.x * scale.x() / 16.0F, -t.y * scale.y() / 16.0F, -t.z * scale.z() / 16.0F);
             } else {

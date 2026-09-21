@@ -1,8 +1,8 @@
 package com.tacz.guns.client.model.gltf.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 
@@ -28,7 +28,7 @@ public final class GltfPbrRenderTypes {
     }
 
     private static RenderType create(GltfPbrMaterial material) {
-        RenderSetup setup = RenderSetup.builder(GltfPbrRenderPipelines.pipeline(material.alphaMode(), material.cull()))
+        RenderSetup.RenderSetupBuilder builder = RenderSetup.builder(GltfPbrRenderPipelines.pipeline(material.alphaMode(), material.cull()))
                 .withTexture(GltfPbrRenderPipelines.BASE_COLOR_SAMPLER, material.baseColorTexture(),
                         () -> GltfPbrSamplers.resolve(material.samplers().baseColor()))
                 .withTexture(GltfPbrRenderPipelines.METALLIC_ROUGHNESS_SAMPLER, material.metallicRoughnessTexture(),
@@ -43,9 +43,11 @@ public final class GltfPbrRenderTypes {
                 .withTexture(GltfPbrRenderPipelines.EMISSIVE_FACTOR_SAMPLER, material.emissiveFactorTexture(), LINEAR_REPEAT)
                 .withTexture(GltfPbrRenderPipelines.PBR_PARAMETERS_SAMPLER, material.pbrParametersTexture(), LINEAR_REPEAT)
                 .useLightmap()
-                .affectsCrumbling()
-                .createRenderSetup();
+                .affectsCrumbling();
+        if (material.alphaMode() == GltfPbrAlphaMode.BLEND) {
+            builder.setOitPipelines(GltfPbrRenderPipelines.oitPipelines(material.cull()));
+        }
         String name = "tacz_gltf_pbr_" + material.alphaMode().id() + (material.cull() ? "_cull" : "_no_cull");
-        return RenderType.create(name, setup);
+        return RenderType.create(name, builder.createRenderSetup());
     }
 }

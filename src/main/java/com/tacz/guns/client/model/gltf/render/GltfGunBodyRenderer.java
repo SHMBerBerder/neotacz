@@ -339,7 +339,7 @@ public final class GltfGunBodyRenderer implements GunBodyRenderer {
         }
         for (Submission submission : submissions) {
             GltfPreparedGeometry geometry = submission.geometry();
-            collector.submitCustomGeometry(poseStack, submission.renderType(), (pose, buffer) ->
+            com.tacz.guns.util.RenderHelper.submitCustomGeometry(collector, poseStack, submission.renderType(), (pose, buffer) ->
                     geometry.emit(pose, buffer, light, overlay));
         }
         return true;

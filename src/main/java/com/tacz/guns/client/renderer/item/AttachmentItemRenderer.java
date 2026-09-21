@@ -51,7 +51,7 @@ public class AttachmentItemRenderer {
                 poseStack.translate(0.5, 2, 0.5);
                 poseStack.scale(-1, -1, 1);
                 if (transformType == ItemDisplayContext.FIXED) {
-                    poseStack.mulPose(Axis.YN.rotationDegrees(90f));
+                    poseStack.rotate(Axis.YN.rotationDegrees(90f));
                 }
                 this.submitDefaultAttachment(transformType, poseStack, submitNodeCollector, pPackedLight, pPackedOverlay, attachmentIndex);
             }, () -> submitSlotTexture(poseStack, submitNodeCollector, pPackedLight, pPackedOverlay, MissingTextureAtlasSprite.getLocation()));
@@ -76,7 +76,7 @@ public class AttachmentItemRenderer {
         // The shared mounted renderer consumes the Bedrock XY basis, not its legacy Y offset.
         poseStack.scale(-1, -1, 1);
         if (transformType == ItemDisplayContext.FIXED) {
-            poseStack.mulPose(Axis.YN.rotationDegrees(90));
+            poseStack.rotate(Axis.YN.rotationDegrees(90));
         }
     }
 
@@ -94,7 +94,7 @@ public class AttachmentItemRenderer {
         } else {
             poseStack.translate(0, 0.5, 0);
             if (transformType == ItemDisplayContext.FIXED) {
-                poseStack.mulPose(Axis.YP.rotationDegrees(90));
+                poseStack.rotate(Axis.YP.rotationDegrees(90));
             }
             SLOT_ATTACHMENT_MODEL.submit(poseStack, submitNodeCollector, RenderTypes.entityTranslucent(attachmentIndex.getSlotTexture()), pPackedLight, pPackedOverlay);
         }
@@ -102,7 +102,7 @@ public class AttachmentItemRenderer {
 
     private static void submitSlotTexture(PoseStack poseStack, SubmitNodeCollector submitNodeCollector, int pPackedLight, int pPackedOverlay, Identifier texture) {
         poseStack.translate(0.5, 1.5, 0.5);
-        poseStack.mulPose(Axis.ZN.rotationDegrees(180));
+        poseStack.rotate(Axis.ZN.rotationDegrees(180));
         SLOT_ATTACHMENT_MODEL.submit(poseStack, submitNodeCollector, RenderTypes.entityTranslucent(texture), pPackedLight, pPackedOverlay);
     }
 }

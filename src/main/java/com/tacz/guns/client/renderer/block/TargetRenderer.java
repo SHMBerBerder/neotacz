@@ -68,8 +68,8 @@ public class TargetRenderer implements BlockEntityRenderer<TargetBlockEntity, Ta
 
             poseStack.pushPose();
             poseStack.translate(0.5, 0.225, 0.5);
-            poseStack.mulPose(Axis.YN.rotationDegrees(state.facing.get2DDataValue() * 90));
-            poseStack.mulPose(Axis.ZN.rotationDegrees(180));
+            poseStack.rotate(Axis.YN.rotationDegrees(state.facing.get2DDataValue() * 90));
+            poseStack.rotate(Axis.ZN.rotationDegrees(180));
             poseStack.translate(0, -1.275, 0.0125);
             RenderType renderType = RenderTypes.entityTranslucent(InternalAssetLoader.TARGET_TEXTURE_LOCATION);
             submitNodeCollector.submitCustomGeometry(poseStack, renderType, (pose, buffer) -> {
@@ -91,7 +91,7 @@ public class TargetRenderer implements BlockEntityRenderer<TargetBlockEntity, Ta
                         .getOrDefault(BedrockSubmitUtils.toResolvableProfile(state.owner))
                         .renderType();
                 poseStack.translate(0, 1.25, 0);
-                poseStack.mulPose(Axis.XP.rotationDegrees(state.rotation));
+                poseStack.rotate(Axis.XP.rotationDegrees(state.rotation));
                 submitNodeCollector.submitCustomGeometry(poseStack, skullRenderType, (pose, buffer) -> {
                     PoseStack callbackPoseStack = BedrockSubmitUtils.fromPose(pose);
                     boolean visible = headModel.visible;

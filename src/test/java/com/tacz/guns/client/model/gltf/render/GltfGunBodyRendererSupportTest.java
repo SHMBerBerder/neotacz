@@ -710,6 +710,11 @@ class GltfGunBodyRendererSupportTest {
         }
 
         @Override
+        public VertexConsumer setUv3(float u, float v) {
+            throw new AssertionError("glTF ENTITY does not contain UV3");
+        }
+
+        @Override
         public VertexConsumer setNormal(float x, float y, float z) {
             lastNormal = new float[]{x, y, z};
             return this;

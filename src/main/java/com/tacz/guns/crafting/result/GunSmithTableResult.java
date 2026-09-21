@@ -3,6 +3,7 @@ package com.tacz.guns.crafting.result;
 import com.tacz.guns.resource.pojo.data.block.TabConfig;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackTemplate;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,10 +18,17 @@ public class GunSmithTableResult {
 
     @Nullable
     private RawGunTableResult raw = null;
+    @Nullable
+    private ItemStackTemplate template = null;
 
     public GunSmithTableResult(ItemStack result, @Nullable Identifier group) {
         this.result = result;
         this.group = group==null ? TabConfig.TAB_EMPTY : group;
+    }
+
+    public GunSmithTableResult(ItemStackTemplate template, @Nullable Identifier group) {
+        this.template = template;
+        this.group = group == null ? TabConfig.TAB_EMPTY : group;
     }
 
 
@@ -34,6 +42,11 @@ public class GunSmithTableResult {
     }
 
     public void init() {
+        if (template != null) {
+            // Default item components bind after server resource listeners finish in 26.3.
+            this.result = new ItemStack(template.item(), template.count(), template.components());
+            this.template = null;
+        }
         if (raw != null) {
             GunSmithTableResult result = RawGunTableResult.init(raw);
             if (result.getResult().isEmpty()) {

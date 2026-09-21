@@ -27,6 +27,26 @@ public final class AttachmentTooltipTextBuilder {
                                             Identifier attachmentId,
                                             AttachmentType type,
                                             Consumer<Component> lines) {
+        appendAttachmentDetails(attachment, attachmentId, type, lines);
+
+        if (Minecraft.getInstance().hasShiftDown()) {
+            lines.accept(Component.translatable("tooltip.tacz.attachment.yaw.support").withStyle(ChatFormatting.GRAY));
+        } else {
+            lines.accept(Component.translatable("tooltip.tacz.attachment.yaw.shift").withStyle(ChatFormatting.GRAY));
+        }
+
+        PackInfo packInfoObject = ClientAssetsManager.INSTANCE.getPackInfo(attachmentId);
+        if (packInfoObject != null) {
+            lines.accept(Component.translatable(packInfoObject.getName())
+                    .withStyle(ChatFormatting.BLUE)
+                    .withStyle(ChatFormatting.ITALIC));
+        }
+    }
+
+    static void appendAttachmentDetails(ItemStack attachment,
+                                        Identifier attachmentId,
+                                        AttachmentType type,
+                                        Consumer<Component> lines) {
         TimelessAPI.getClientAttachmentIndex(attachmentId).ifPresent(index -> {
             AttachmentData data = index.getData();
 
@@ -74,19 +94,6 @@ public final class AttachmentTooltipTextBuilder {
 
             data.getModifier().forEach((key, value) -> value.getComponents().forEach(lines));
         });
-
-        if (Minecraft.getInstance().hasShiftDown()) {
-            lines.accept(Component.translatable("tooltip.tacz.attachment.yaw.support").withStyle(ChatFormatting.GRAY));
-        } else {
-            lines.accept(Component.translatable("tooltip.tacz.attachment.yaw.shift").withStyle(ChatFormatting.GRAY));
-        }
-
-        PackInfo packInfoObject = ClientAssetsManager.INSTANCE.getPackInfo(attachmentId);
-        if (packInfoObject != null) {
-            lines.accept(Component.translatable(packInfoObject.getName())
-                    .withStyle(ChatFormatting.BLUE)
-                    .withStyle(ChatFormatting.ITALIC));
-        }
     }
 
     private static String rgbToHex(int rgb) {

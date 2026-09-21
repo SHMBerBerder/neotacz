@@ -43,7 +43,7 @@ public class ClientMessageLaserColor {
     }
 
     public static void encode(ClientMessageLaserColor message, FriendlyByteBuf buf) {
-        buf.writeMap(message.colorMap, FriendlyByteBuf::writeEnum, FriendlyByteBuf::writeInt);
+        buf.writeMap(message.colorMap, FriendlyByteBuf::writeEnum, (buffer, key, value) -> buffer.writeInt(value));
         buf.writeBoolean(message.applyGunColor);
         buf.writeInt(message.gunColor);
         buf.writeInt(message.gunSlotIndex);
@@ -51,7 +51,7 @@ public class ClientMessageLaserColor {
 
     public static ClientMessageLaserColor decode(FriendlyByteBuf buf) {
         ClientMessageLaserColor message = new ClientMessageLaserColor();
-        message.colorMap.putAll(buf.readMap(buf1 -> buf.readEnum(AttachmentType.class), FriendlyByteBuf::readInt));
+        message.colorMap.putAll(buf.readMap(buffer -> buffer.readEnum(AttachmentType.class), (buffer, key) -> buffer.readInt()));
         message.applyGunColor = buf.readBoolean();
         message.gunColor = buf.readInt();
         message.gunSlotIndex = buf.readInt();

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.tacz.guns.client.model.IFunctionalRenderer;
+import com.tacz.guns.client.model.ScopeRenderExtras;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
 import com.tacz.guns.client.model.papi.PapiManager;
 import com.tacz.guns.client.resource.pojo.display.gun.TextShow;
@@ -45,7 +46,7 @@ public class TextShowRender implements IFunctionalRenderer {
         if (StringUtils.isBlank(text)) {
             return;
         }
-        poseStack.mulPose(Axis.ZP.rotationDegrees(180f));
+        poseStack.rotate(Axis.ZP.rotationDegrees(180f));
         Matrix3f normal = new Matrix3f(poseStack.last().normal());
         Matrix4f pose = new Matrix4f(poseStack.last().pose());
 
@@ -53,7 +54,7 @@ public class TextShowRender implements IFunctionalRenderer {
         bedrockModel.delegateRender((poseStack1, vertexBuffer1, transformType1, light1, overlay1) -> {
             Font font = Minecraft.getInstance().font;
             boolean shadow = textShow.isShadow();
-            int color = textShow.getColorInt();
+            int color = opaqueTextColor(textShow.getColorInt());
             float scale = textShow.getScale();
             int packLight = LightCoordsUtil.pack(textShow.getTextLight(), textShow.getTextLight());
             int width = font.width(text);
@@ -70,11 +71,17 @@ public class TextShowRender implements IFunctionalRenderer {
             poseStack2.scale(2 / 300f * scale, -2 / 300f * scale, -2 / 300f);
 
             SubmitNodeCollector collector = RenderHelper.currentSubmitNodeCollector();
-            if (collector != null) {
+            FormattedCharSequence sequence = FormattedCharSequence.forward(text, Style.EMPTY);
+            if (collector != null && !ScopeRenderExtras.captureText(collector, poseStack2, -xOffset,
+                    -font.lineHeight / 2f, sequence, shadow, Font.DisplayMode.NORMAL, packLight, color)) {
                 collector.submitText(poseStack2, -xOffset, -font.lineHeight / 2f,
-                        FormattedCharSequence.forward(text, Style.EMPTY), shadow, Font.DisplayMode.NORMAL,
+                        sequence, shadow, Font.DisplayMode.NORMAL,
                         packLight, color, 0, 0);
             }
         });
+    }
+
+    static int opaqueTextColor(int rgb) {
+        return 0xFF000000 | rgb;
     }
 }

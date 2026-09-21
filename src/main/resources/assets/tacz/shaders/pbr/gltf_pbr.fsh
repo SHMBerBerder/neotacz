@@ -1,9 +1,11 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
-#moj_import <minecraft:light.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
+#include <minecraft:light.glsl>
+#include <minecraft:oit.glsl>
 
 uniform sampler2D BaseColorSampler;
 uniform sampler2D MetallicRoughnessSampler;
@@ -14,15 +16,17 @@ uniform sampler2D BaseColorFactorSampler;
 uniform sampler2D EmissiveFactorSampler;
 uniform sampler2D PbrParametersSampler;
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec3 vertexViewPosition;
-in vec3 vertexViewNormal;
-in vec4 vertexColor;
-in vec4 lightMapColor;
-in vec2 texCoord0;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec3 vertexViewPosition;
+layout(location = 3) in vec3 vertexViewNormal;
+layout(location = 4) in vec4 vertexColor;
+layout(location = 5) in vec4 lightMapColor;
+layout(location = 6) in vec2 texCoord0;
 
-out vec4 fragColor;
+#ifndef OIT_ALPHA_ONLY
+layout(location = 0) out vec4 fragColor;
+#endif
 
 const float PI = 3.14159265359;
 const float MIN_ROUGHNESS = 0.045;
@@ -107,12 +111,6 @@ void main() {
     vec4 baseSample = texture(BaseColorSampler, texCoord0);
     vec4 baseColorFactor = texture(BaseColorFactorSampler, vec2(0.5, 0.5));
     vec4 emissiveFactorAndCutoff = texture(EmissiveFactorSampler, vec2(0.5, 0.5));
-    vec4 pbrParameters = texture(PbrParametersSampler, vec2(0.5, 0.5));
-    vec3 metallicRoughness = texture(MetallicRoughnessSampler, texCoord0).rgb;
-    float occlusion = texture(OcclusionSampler, texCoord0).r;
-    vec3 emissive = srgb_to_linear(texture(EmissiveSampler, texCoord0).rgb) * emissiveFactorAndCutoff.rgb;
-
-    vec3 baseColor = srgb_to_linear(baseSample.rgb) * baseColorFactor.rgb * vertexColor.rgb;
     float alpha = baseSample.a * baseColorFactor.a * vertexColor.a;
 
 #ifdef GLTF_ALPHA_OPAQUE
@@ -126,6 +124,14 @@ void main() {
     alpha = 1.0;
 #endif
 
+#ifdef OIT_ALPHA_ONLY
+    executeAlphaOnlyPhase(gl_FragCoord.z, alpha);
+#else
+    vec4 pbrParameters = texture(PbrParametersSampler, vec2(0.5, 0.5));
+    vec3 metallicRoughness = texture(MetallicRoughnessSampler, texCoord0).rgb;
+    float occlusion = texture(OcclusionSampler, texCoord0).r;
+    vec3 emissive = srgb_to_linear(texture(EmissiveSampler, texCoord0).rgb) * emissiveFactorAndCutoff.rgb;
+    vec3 baseColor = srgb_to_linear(baseSample.rgb) * baseColorFactor.rgb * vertexColor.rgb;
     float metallic = saturate(metallicRoughness.b * pbrParameters.r);
     float roughness = max(MIN_ROUGHNESS, saturate(metallicRoughness.g * pbrParameters.g));
     float normalScale = max(pbrParameters.b * 4.0, 0.0);
@@ -151,5 +157,12 @@ void main() {
     color += emissive;
 
     vec4 encoded = vec4(linear_to_srgb(color), alpha);
-    fragColor = apply_fog(encoded, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, FogColor);
+#ifdef OIT_ACCUMULATE
+    encoded = sampleColorForAccumulation(encoded);
+    vec4 fogColor = vec4(FogColor.rgb * encoded.a, FogColor.a);
+#else
+    vec4 fogColor = FogColor;
+#endif
+    fragColor = apply_fog(encoded, sphericalVertexDistance, cylindricalVertexDistance, FogEnvironmentalStart, FogEnvironmentalEnd, FogRenderDistanceStart, FogRenderDistanceEnd, fogColor);
+#endif
 }

@@ -11,16 +11,19 @@
   ],
   "client": [
     "client.AbstractButtonMixin",
+    "client.AvatarRendererMixin",
     "client.CameraHudFovMixin",
     "client.GameRendererMixin",
     "client.ItemInHandLayerMixin",
-    "client.ItemInHandRendererMixin",
+    "client.FirstPersonHandsAndItemsMixin",
+    "client.FirstPersonHandsAndItemsRendererMixin",
     "client.LanguageMixin",
     "client.LivingEntityRendererMixin",
     "client.LocalPlayerMixin",
     "client.MouseHandlerMixin",
     "client.MultiPlayerGameModeAccessor",
     "client.PlayerModelMixin",
+    "client.PlayerAnimatorPlayerMixin",
     "client.SoundManagerPreparationsMixin"
   ],
   "injectors": {

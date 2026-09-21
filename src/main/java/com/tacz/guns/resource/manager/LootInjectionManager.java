@@ -39,7 +39,7 @@ public class LootInjectionManager extends SimplePreparableReloadListener<Map<Ide
             Identifier id = entry.getKey();
             for (JsonElement element : entry.getValue()) {
                 try {
-                    LootTableInjection injection = LootTableInjection.fromJson(id, element);
+                    LootTableInjection injection = LootTableInjection.fromJson(id, element, getRegistryLookup());
                     for (Identifier lootTable : injection.lootTables()) {
                         injections.computeIfAbsent(lootTable, key -> new java.util.ArrayList<>()).add(injection);
                     }

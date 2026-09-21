@@ -209,7 +209,7 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
         }
         Quaternionf quaternion = MathUtil.multiplyQuaternion(model.getCameraAnimationObject().rotationQuaternion, multiplier);
         PoseStack poseStack = event.getPoseStack();
-        poseStack.mulPose(quaternion);
+        poseStack.rotate(quaternion);
     }
 
     /**
@@ -234,7 +234,7 @@ public abstract class AnimateGeoItemRenderer<M extends BedrockAnimatedModel, CTX
             // 从渲染原点 (0, 24, 0) 移动到模型原点 (0, 0, 0)
             poseStack.translate(0, 1.5f, 0);
             // 基岩版模型是上下颠倒的，需要翻转过来。
-            poseStack.mulPose(Axis.ZP.rotationDegrees(180f));
+            poseStack.rotate(Axis.ZP.rotationDegrees(180f));
             doExtraTransforms(poseStack, model, stack);
 
             var stateMachine = getStateMachine(stack);

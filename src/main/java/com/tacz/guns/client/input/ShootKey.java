@@ -21,7 +21,6 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -31,7 +30,7 @@ public class ShootKey {
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
             InputConstants.Type.MOUSE,
-            GLFW.GLFW_MOUSE_BUTTON_LEFT,
+            InputConstants.MOUSE_BUTTON_LEFT,
             TaczKeyMappings.CATEGORY);
     private static boolean lastTimeShootSuccess = false;
     private static boolean controllerShootDown = false;

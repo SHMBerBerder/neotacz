@@ -90,7 +90,7 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
             poseStack2.pushPose();
             {
                 poseStack2.scale(scale, scale, scale);
-                poseStack2.mulPose(Axis.ZP.rotationDegrees(muzzleFlashRandomRotate));
+                poseStack2.rotate(Axis.ZP.rotationDegrees(muzzleFlashRandomRotate));
                 poseStack2.translate(0, -1, 0);
                 RenderType renderTypeBg = RenderTypes.entityTranslucent(muzzleFlash.getTexture());
                 MUZZLE_FLASH_MODEL.submit(poseStack2, collector, renderTypeBg, light, overlay);
@@ -101,7 +101,7 @@ public class MuzzleFlashRender implements IFunctionalRenderer {
             poseStack2.pushPose();
             {
                 poseStack2.scale(scale / 2, scale / 2, scale / 2);
-                poseStack2.mulPose(Axis.ZP.rotationDegrees(muzzleFlashRandomRotate));
+                poseStack2.rotate(Axis.ZP.rotationDegrees(muzzleFlashRandomRotate));
                 poseStack2.translate(0, -0.9, 0);
                 RenderType renderTypeLight = RenderTypes.energySwirl(muzzleFlash.getTexture(), 1, 1);
                 MUZZLE_FLASH_MODEL.submit(poseStack2, collector, renderTypeLight, light, overlay);

@@ -14,7 +14,6 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -23,20 +22,20 @@ public class FireSelectKey {
     public static final KeyMapping FIRE_SELECT_KEY = new KeyMapping("key.tacz.fire_select.desc",
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_G,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_G,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
     public static void onFireSelectKeyPress(InputEvent.Key event) {
-        if (isInGame() && event.getAction() == GLFW.GLFW_PRESS && TaczKeyMappings.matches(FIRE_SELECT_KEY, event)) {
+        if (isInGame() && event.getAction() == InputConstants.PRESS && TaczKeyMappings.matches(FIRE_SELECT_KEY, event)) {
             doFireSelectLogic();
         }
     }
 
     @SubscribeEvent
     public static void onFireSelectMousePress(InputEvent.MouseButton.Post event) {
-        if (isInGame() && event.getAction() == GLFW.GLFW_PRESS && TaczKeyMappings.matchesMouse(FIRE_SELECT_KEY, event)) {
+        if (isInGame() && event.getAction() == InputConstants.PRESS && TaczKeyMappings.matchesMouse(FIRE_SELECT_KEY, event)) {
             doFireSelectLogic();
         }
     }

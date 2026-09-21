@@ -77,7 +77,7 @@ public abstract class AbstractGunSmithTableBlock extends BaseEntityBlock {
 
     @Override
     public PushReaction getPistonPushReaction(BlockState state) {
-        return PushReaction.DESTROY;
+        return PushReaction.POPPED;
     }
 
 

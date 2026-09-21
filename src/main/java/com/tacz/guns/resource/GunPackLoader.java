@@ -9,7 +9,7 @@ import com.tacz.guns.util.GetJarResources;
 import net.minecraft.SharedConstants;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.AbstractPackResources;
+import net.minecraft.server.packs.AbstractPackMetadataResources;
 import net.minecraft.server.packs.FilePackResources;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -252,25 +253,26 @@ public enum GunPackLoader implements RepositorySource {
 
     private record TaczResourcesSupplier(List<GunPack> gunPacks, PackMetadataSection metadata) implements Pack.ResourcesSupplier {
         @Override
-        public PackResources openPrimary(PackLocationInfo locationInfo) {
-            return new TaczPackResources(locationInfo, gunPacks, metadata);
+        public PackResources openMetadata(PackLocationInfo locationInfo) {
+            return new TaczPackResources(locationInfo, gunPacks, metadata, getModIcon(GunMod.MOD_ID));
         }
 
         @Override
-        public PackResources openFull(PackLocationInfo locationInfo, Pack.Metadata metadata) {
-            return openPrimary(locationInfo);
+        public Stream<PackResources> openResources(PackLocationInfo locationInfo, Pack.Metadata metadata) {
+            return Stream.of(openMetadata(locationInfo));
         }
     }
 
-    private static final class TaczPackResources extends AbstractPackResources {
+    static final class TaczPackResources extends AbstractPackMetadataResources implements PackResources {
         private final List<PackResources> packs;
         private final PackMetadataSection metadata;
         private final @Nullable IoSupplier<InputStream> icon;
 
-        private TaczPackResources(PackLocationInfo locationInfo, List<GunPack> gunPacks, PackMetadataSection metadata) {
+        TaczPackResources(PackLocationInfo locationInfo, List<GunPack> gunPacks,
+                          PackMetadataSection metadata, @Nullable IoSupplier<InputStream> icon) {
             super(locationInfo);
             this.metadata = metadata;
-            this.icon = getModIcon(GunMod.MOD_ID);
+            this.icon = icon;
             this.packs = gunPacks.stream()
                     .map(gunPack -> openPackResources(locationInfo, gunPack))
                     .toList();

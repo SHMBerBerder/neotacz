@@ -28,7 +28,6 @@ import com.tacz.guns.resource.index.CommonBlockIndex;
 import com.tacz.guns.resource.network.CommonNetworkCache;
 import com.tacz.guns.resource.pojo.data.block.TabConfig;
 import com.tacz.guns.util.GunSmithTableBlockIds;
-import com.tacz.guns.util.MinecraftGuiCompat;
 import com.tacz.guns.util.RenderDistance;
 import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.ints.Int2IntArrayMap;
@@ -41,12 +40,14 @@ import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Util;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import org.apache.commons.lang3.StringUtils;
@@ -54,6 +55,7 @@ import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix3x2fStack;
 
 import javax.annotation.Nullable;
+import java.net.URISyntaxException;
 import java.util.*;
 
 public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMenu> {
@@ -603,12 +605,11 @@ public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMe
                 }
                 String url = packInfo.getUrl();
                 if (StringUtils.isNotBlank(url) && minecraft != null) {
-                    MinecraftGuiCompat.setScreen(new ConfirmLinkScreen(yes -> {
-                        if (yes) {
-                            Util.getPlatform().openUri(url);
-                        }
-                        MinecraftGuiCompat.setScreen(this);
-                    }, url, false));
+                    try {
+                        ConfirmLinkScreen.confirmLinkNow(this, Util.parseAndValidateUntrustedUri(url), false);
+                    } catch (URISyntaxException exception) {
+                        GunMod.LOGGER.warn("Cannot open invalid URL for gun pack {}", id);
+                    }
                 }
             }
         }));
@@ -734,19 +735,19 @@ public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMe
     public void extractRenderState(@NotNull GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         this.retryEmptyRecipeRefresh();
-        drawModCenteredString(graphics, font, Component.translatable("gui.tacz.gun_smith_table.preview"), leftPos + 108, topPos + 5, 0x555555);
+        drawModCenteredString(graphics, font, Component.translatable("gui.tacz.gun_smith_table.preview"), leftPos + 108, topPos + 5, 0xFF555555);
         if (selectedType != null) {
             var config = recipeKeys.get(selectedType);
             if (config != null) {
-                graphics.text(font, config.getName(), leftPos + 150, topPos + 32, 0x555555, false);
+                graphics.text(font, config.getName(), leftPos + 150, topPos + 32, 0xFF555555, false);
             }
         }
-        graphics.text(font, Component.translatable("gui.tacz.gun_smith_table.ingredient"), leftPos + 254, topPos + 50, 0x555555, false);
-        drawModCenteredString(graphics, font, Component.translatable("gui.tacz.gun_smith_table.craft"), leftPos + 312, topPos + 167, 0xFFFFFF);
+        graphics.text(font, Component.translatable("gui.tacz.gun_smith_table.ingredient"), leftPos + 254, topPos + 50, 0xFF555555, false);
+        drawModCenteredString(graphics, font, Component.translatable("gui.tacz.gun_smith_table.craft"), leftPos + 312, topPos + 167, 0xFFFFFFFF);
         if (!this.filterEnabled && this.selectedRecipe != null) {
             this.extractLeftModel(graphics, this.selectedRecipe);
             this.renderPackInfo(graphics, this.selectedRecipe);
-            graphics.text(font, Component.translatable("gui.tacz.gun_smith_table.count", this.selectedRecipe.getResult().getResult().getCount()), leftPos + 254, topPos + 140, 0x555555, false);
+            graphics.text(font, Component.translatable("gui.tacz.gun_smith_table.count", this.selectedRecipe.getResult().getResult().getCount()), leftPos + 254, topPos + 140, 0xFF555555, false);
         }
         if (selectedRecipeList != null && !selectedRecipeList.isEmpty()) {
             renderIngredient(graphics);
@@ -773,20 +774,20 @@ public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMe
         PackInfo packInfo = ClientAssetsManager.INSTANCE.getPackInfo(id);
         if (packInfo != null) {
             Component nameText = Component.translatable(packInfo.getName());
-            submitLocalScaledText(gui, nameText, leftPos + 6, topPos + 122, 0.75f, 0x555555, false);
+            submitLocalScaledText(gui, nameText, leftPos + 6, topPos + 122, 0.75f, 0xFF555555, false);
 
             int offsetX = leftPos + 6;
             int offsetY = topPos + 130;
             int nameWidth = (int) (font.width(nameText) * 0.75f);
             Component ver = Component.literal("v" + packInfo.getVersion()).withStyle(ChatFormatting.UNDERLINE);
-            submitLocalScaledText(gui, ver, offsetX + nameWidth + 5, topPos + 123, 0.5f, 0x555555, false);
+            submitLocalScaledText(gui, ver, offsetX + nameWidth + 5, topPos + 123, 0.5f, 0xFF555555, false);
 
             String descKey = packInfo.getDescription();
             if (StringUtils.isNoneBlank(descKey)) {
                 Component desc = Component.translatable(descKey);
                 List<FormattedCharSequence> split = font.split(desc, 245);
                 for (FormattedCharSequence charSequence : split) {
-                    submitLocalScaledText(gui, charSequence, offsetX, offsetY, 0.5f, 0x555555, false);
+                    submitLocalScaledText(gui, charSequence, offsetX, offsetY, 0.5f, 0xFF555555, false);
                     offsetY += 5;
                 }
                 offsetY += 3;
@@ -794,27 +795,27 @@ public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMe
 
             submitLocalScaledText(gui, Component.translatable("gui.tacz.gun_smith_table.license")
                             .append(Component.literal(packInfo.getLicense()).withStyle(ChatFormatting.DARK_GRAY)),
-                    offsetX, offsetY, 0.5f, 0x555555, false);
+                    offsetX, offsetY, 0.5f, 0xFF555555, false);
             offsetY += 12;
 
             List<String> authors = packInfo.getAuthors();
             if (!authors.isEmpty()) {
                 submitLocalScaledText(gui, Component.translatable("gui.tacz.gun_smith_table.authors")
                                 .append(Component.literal(StringUtils.join(authors, ", ")).withStyle(ChatFormatting.DARK_GRAY)),
-                        offsetX, offsetY, 0.5f, 0x555555, false);
+                        offsetX, offsetY, 0.5f, 0xFF555555, false);
                 offsetY += 12;
             }
 
             submitLocalScaledText(gui, Component.translatable("gui.tacz.gun_smith_table.date")
                             .append(Component.literal(packInfo.getDate()).withStyle(ChatFormatting.DARK_GRAY)),
-                    offsetX, offsetY, 0.5f, 0x555555, false);
+                    offsetX, offsetY, 0.5f, 0xFF555555, false);
         } else {
             String recipeText = this.selectedRecipeId == null ? "unknown" : this.selectedRecipeId.toString();
-            gui.text(font, Component.translatable("gui.tacz.gun_smith_table.error").withStyle(ChatFormatting.DARK_RED), leftPos + 6, topPos + 122, 0xAF0000, false);
-            gui.text(font, Component.translatable("gui.tacz.gun_smith_table.error.id", recipeText).withStyle(ChatFormatting.DARK_RED), leftPos + 6, topPos + 134, 0xFFFFFF, false);
+            gui.text(font, Component.translatable("gui.tacz.gun_smith_table.error").withStyle(ChatFormatting.DARK_RED), leftPos + 6, topPos + 122, 0xFFAF0000, false);
+            gui.text(font, Component.translatable("gui.tacz.gun_smith_table.error.id", recipeText).withStyle(ChatFormatting.DARK_RED), leftPos + 6, topPos + 134, 0xFFFFFFFF, false);
             PackInfo errorPackInfo = ClientAssetsManager.INSTANCE.getPackInfo(id);
             if (errorPackInfo != null) {
-                gui.text(font, Component.translatable(errorPackInfo.getName()).withStyle(ChatFormatting.DARK_RED), leftPos + 6, topPos + 146, 0xAF0000, false);
+                gui.text(font, Component.translatable(errorPackInfo.getName()).withStyle(ChatFormatting.DARK_RED), leftPos + 6, topPos + 146, 0xFFAF0000, false);
             }
         }
     }
@@ -848,13 +849,13 @@ public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMe
                 submitIngredientItem(gui, item, offsetX, offsetY);
                 int count = smithTableIngredient.getCount();
                 if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.isCreative()){
-                    submitLocalScaledText(gui, String.format("%d/∞", count), offsetX + 17, offsetY + 10, 0.5f, 0xFFFFFF, false);
+                    submitLocalScaledText(gui, String.format("%d/∞", count), offsetX + 17, offsetY + 10, 0.5f, 0xFFFFFFFF, false);
                 } else {
                     int hasCount = 0;
                     if (playerIngredientCount != null && index < playerIngredientCount.size()) {
                         hasCount = playerIngredientCount.get(index);
                     }
-                    int color = count <= hasCount ? 0xFFFFFF : 0xFF0000;
+                    int color = count <= hasCount ? 0xFFFFFFFF : 0xFFFF0000;
                     submitLocalScaledText(gui, String.format("%d/%d", count, hasCount), offsetX + 17, offsetY + 10, 0.5f, color, false);
                 }
             }
@@ -937,15 +938,15 @@ public class GunSmithTableScreen extends AbstractContainerScreen<GunSmithTableMe
             return;
         }
 
-        float itemScale = Math.max(1.0f, this.scale / 16.0f);
-        graphics.enableScissor(startX, startY, startX + width, startY + height);
-        Matrix3x2fStack poseStack = graphics.pose();
-        poseStack.pushMatrix();
-        poseStack.translate(xPos, yPos);
-        poseStack.scale(itemScale, itemScale);
-        graphics.item(output, -8, -8);
-        poseStack.popMatrix();
-        graphics.disableScissor();
+        // The workbench uses the rotating FIXED model, not the inventory icon.
+        ItemStackRenderState itemState = new ItemStackRenderState();
+        minecraft.getItemModelResolver().updateForTopItem(
+                itemState, output, ItemDisplayContext.FIXED, minecraft.level, null, 0);
+        graphics.submitPictureInPictureRenderState(new GunSmithTablePreviewState(
+                itemState, startX, startY, startX + width, startY + height,
+                xPos + 8, yPos + 8, this.scale, 15.0F,
+                GunSmithTablePreviewState.rotationDegrees(System.currentTimeMillis()),
+                graphics.pose(), graphics.peekScissorStack()));
     }
 
     @Override

@@ -1,16 +1,17 @@
 package com.tacz.guns.util;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
+import com.tacz.guns.client.model.ScopeRenderExtras;
 import com.tacz.guns.compat.ar.ARCompat;
 import com.tacz.guns.compat.optifine.OptifineCompat;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -59,6 +60,11 @@ public final class RenderHelper {
         }
 
         @Override
+        public VertexConsumer setUv3(float u, float v) {
+            return this;
+        }
+
+        @Override
         public VertexConsumer setNormal(float x, float y, float z) {
             return this;
         }
@@ -89,11 +95,18 @@ public final class RenderHelper {
 
     public static void submitCustomGeometry(SubmitNodeCollector collector, PoseStack poseStack, RenderType renderType,
                                             BiConsumer<PoseStack.Pose, VertexConsumer> renderer) {
+        submitCustomGeometry((OrderedSubmitNodeCollector) collector, poseStack, renderType, (pose, buffer) ->
+                withSubmitCustomGeometryContext(collector, () -> renderer.accept(pose, buffer)));
+    }
+
+    public static void submitCustomGeometry(OrderedSubmitNodeCollector collector, PoseStack poseStack, RenderType renderType,
+                                            BiConsumer<PoseStack.Pose, VertexConsumer> renderer) {
         if (collector == null) {
             return;
         }
-        collector.submitCustomGeometry(poseStack, renderType, (pose, buffer) ->
-                withSubmitCustomGeometryContext(collector, () -> renderer.accept(pose, buffer)));
+        if (!ScopeRenderExtras.captureGeometry(collector, poseStack, renderType, renderer)) {
+            collector.submitCustomGeometry(poseStack, renderType, renderer::accept);
+        }
     }
 
     public static boolean isInsideSubmitCustomGeometryCallback() {
@@ -251,7 +264,7 @@ public final class RenderHelper {
         }
         Minecraft mc = Minecraft.getInstance();
         EntityRenderDispatcher renderManager = mc.getEntityRenderDispatcher();
-        AvatarRenderer<AbstractClientPlayer> renderer = renderManager.getPlayerRenderer(player);
+        AvatarRenderer<?> renderer = (AvatarRenderer<?>) renderManager.getRenderer(player);
         Identifier skinTexture = player.getSkin().body().texturePath();
         boolean sleeveVisible = player.isModelPartShown(hand == HumanoidArm.RIGHT ? PlayerModelPart.RIGHT_SLEEVE : PlayerModelPart.LEFT_SLEEVE);
 
@@ -261,9 +274,9 @@ public final class RenderHelper {
         }
         try {
             if (hand == HumanoidArm.RIGHT) {
-                renderer.renderRightHand(matrixStack, submitNodeCollector, combinedLight, skinTexture, sleeveVisible, player);
+                renderer.renderRightHand(matrixStack, submitNodeCollector, combinedLight, skinTexture, sleeveVisible);
             } else {
-                renderer.renderLeftHand(matrixStack, submitNodeCollector, combinedLight, skinTexture, sleeveVisible, player);
+                renderer.renderLeftHand(matrixStack, submitNodeCollector, combinedLight, skinTexture, sleeveVisible);
             }
         } finally {
             if (accelerated) {

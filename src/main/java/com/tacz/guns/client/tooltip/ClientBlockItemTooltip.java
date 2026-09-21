@@ -60,12 +60,12 @@ public class ClientBlockItemTooltip implements ClientTooltipComponent {
     private void drawText(GuiGraphicsExtractor graphics, Font font, int pX, int pY) {
         int yOffset = pY;
         for (Component component : this.components) {
-            graphics.text(font, component, pX, yOffset, 0xffaa00, false);
+            graphics.text(font, component, pX, yOffset, 0xFFFFAA00, false);
             yOffset += 10;
         }
         // 枪包名
         if (packInfo != null) {
-            graphics.text(font, this.packInfo, pX, yOffset + 6, 0xffffff, false);
+            graphics.text(font, this.packInfo, pX, yOffset + 6, 0xFFFFFFFF, false);
         }
     }
 

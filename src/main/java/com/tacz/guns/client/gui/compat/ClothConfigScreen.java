@@ -2,7 +2,6 @@ package com.tacz.guns.client.gui.compat;
 
 import com.tacz.guns.init.CompatRegistry;
 import com.tacz.guns.util.MinecraftGuiCompat;
-import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.TextAlignment;
@@ -18,6 +17,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.net.URI;
 import java.util.function.Supplier;
 
 public class ClothConfigScreen extends Screen {
@@ -60,12 +60,7 @@ public class ClothConfigScreen extends Screen {
 
     private void openUrl(String url) {
         if (StringUtils.isNotBlank(url) && minecraft != null) {
-            MinecraftGuiCompat.setScreen(new ConfirmLinkScreen(yes -> {
-                if (yes) {
-                    Util.getPlatform().openUri(url);
-                }
-                MinecraftGuiCompat.setScreen(this);
-            }, url, true));
+            ConfirmLinkScreen.confirmLinkNow(this, URI.create(url), true);
         }
     }
 }

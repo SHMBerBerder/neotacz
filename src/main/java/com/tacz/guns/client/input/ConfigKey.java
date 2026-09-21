@@ -21,7 +21,6 @@ import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import java.net.URI;
 
@@ -33,13 +32,13 @@ public class ConfigKey {
     public static final KeyMapping OPEN_CONFIG_KEY = new KeyMapping("key.tacz.open_config.desc",
             KeyConflictContext.IN_GAME,
             KeyModifier.ALT,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_T,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_T,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
     public static void onOpenConfig(InputEvent.Key event) {
-        if (isInGame() && event.getAction() == GLFW.GLFW_PRESS
+        if (isInGame() && event.getAction() == InputConstants.PRESS
                 && TaczKeyMappings.matches(OPEN_CONFIG_KEY, event)
                 && KeyModifier.getActiveModifiers().contains(OPEN_CONFIG_KEY.getKeyModifier())) {
             LocalPlayer player = Minecraft.getInstance().player;

@@ -81,7 +81,7 @@ public class HumanoidOffhandRender {
         poseStack.scale(-scale.x(), -scale.y(), scale.z());
         Quaternionf rotation = new Quaternionf();
         MathUtil.toQuaternion((float) Math.toRadians(rotate.x), (float) Math.toRadians(rotate.y), (float) Math.toRadians(rotate.z), rotation);
-        poseStack.mulPose(rotation);
+        poseStack.rotate(rotation);
         ItemStackRenderState itemState = new ItemStackRenderState();
         Minecraft.getInstance().getItemModelResolver().updateForTopItem(
                 itemState,

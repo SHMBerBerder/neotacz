@@ -17,7 +17,6 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -27,7 +26,7 @@ public class AimKey {
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
             InputConstants.Type.MOUSE,
-            GLFW.GLFW_MOUSE_BUTTON_RIGHT,
+            InputConstants.MOUSE_BUTTON_RIGHT,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
@@ -45,10 +44,10 @@ public class AimKey {
                 if (!KeyConfig.HOLD_TO_AIM.get()) {
                     action = !operator.isAim();
                 }
-                if (event.getAction() == GLFW.GLFW_PRESS) {
+                if (event.getAction() == InputConstants.PRESS) {
                     IClientPlayerGunOperator.fromLocalPlayer(player).aim(action);
                 }
-                if (KeyConfig.HOLD_TO_AIM.get() && event.getAction() == GLFW.GLFW_RELEASE) {
+                if (KeyConfig.HOLD_TO_AIM.get() && event.getAction() == InputConstants.RELEASE) {
                     IClientPlayerGunOperator.fromLocalPlayer(player).aim(false);
                 }
             }

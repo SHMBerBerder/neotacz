@@ -37,6 +37,7 @@ import com.tacz.guns.resource.serialize.*;
 import com.tacz.guns.util.AllowAttachmentTagMatcher;
 import com.tacz.guns.util.ItemStackData;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.FileToIdConverter;
@@ -56,6 +57,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
+import net.neoforged.neoforge.event.DefaultDataComponentsBoundEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
@@ -163,37 +165,34 @@ public class CommonAssetsManager implements ICommonResourceProvider {
         return builder.build();
     }
 
-    private Map<Identifier, String> selectRecipeNetworkCache(@Nullable Map<Identifier, String> managerCache) {
-        Map<Identifier, String> fallbackCache = getRecipeNetworkCache();
-        if (managerCache == null || managerCache.isEmpty()) {
-            return fallbackCache;
+    Map<Identifier, String> selectRecipeNetworkCache(@Nullable Map<Identifier, String> managerCache) {
+        Map<Identifier, String> recipes = new LinkedHashMap<>();
+        if (managerCache != null) {
+            recipes.putAll(managerCache);
         }
-        if (fallbackCache.size() > managerCache.size()) {
-            GunMod.LOGGER.warn("Using RecipeManager gun smith table recipe fallback because it has more recipes: manager={} fallback={}",
-                    managerCache.size(), fallbackCache.size());
-            return fallbackCache;
+        if (recipeManager != null) {
+            for (RecipeHolder<?> holder : recipeManager.getRecipes()) {
+                Identifier id = holder.id().identifier();
+                // Match crafting authority: any native recipe owns its ID, even when it is not a TACZ recipe.
+                recipes.remove(id);
+                if (!(holder.value() instanceof GunSmithTableRecipe recipe)) {
+                    continue;
+                }
+                try {
+                    recipe.init();
+                    if (!recipe.getOutput().isEmpty()) {
+                        recipes.put(id, GSON.toJson(toNetworkRecipeJson(recipe)));
+                    }
+                } catch (RuntimeException exception) {
+                    GunMod.LOGGER.warn("Failed to serialize gun smith table recipe {} for client sync", id, exception);
+                }
+            }
         }
-        return managerCache;
+        return recipes;
     }
 
     private Map<Identifier, String> getRecipeNetworkCache() {
-        if (recipeManager == null) {
-            return Map.of();
-        }
-        Map<Identifier, String> recipes = new LinkedHashMap<>();
-        recipeManager.getRecipes().stream()
-                .filter(holder -> holder.value().getType() == ModRecipe.GUN_SMITH_TABLE_CRAFTING.get())
-                .forEach(holder -> {
-                    Identifier id = holder.id().identifier();
-                    try {
-                        GunSmithTableRecipe recipe = (GunSmithTableRecipe) holder.value();
-                        recipe.init();
-                        recipes.put(id, GSON.toJson(toNetworkRecipeJson(recipe)));
-                    } catch (RuntimeException exception) {
-                        GunMod.LOGGER.warn("Failed to serialize gun smith table recipe {} for client sync", id, exception);
-                    }
-                });
-        return recipes;
+        return selectRecipeNetworkCache(Map.of());
     }
 
     private static JsonObject toNetworkRecipeJson(GunSmithTableRecipe recipe) {
@@ -359,6 +358,13 @@ public class CommonAssetsManager implements ICommonResourceProvider {
     }
 
     public RecipeManager recipeManager;
+    @Nullable
+    private HolderLookup.Provider recipeRegistries;
+
+    @Nullable
+    public GunSmithTableRecipe getServerRecipe(Identifier id) {
+        return recipeDataManager == null ? null : recipeDataManager.getInitializedRecipe(id);
+    }
 
     /**
      * 这个事件理论上会在server resource已经完成重载和传输到客户端之前触发<br/>
@@ -366,16 +372,34 @@ public class CommonAssetsManager implements ICommonResourceProvider {
      * @param event
      */
     @SubscribeEvent
-    public static void onReload(TagsUpdatedEvent event) {
-        if (event.getUpdateCause() == TagsUpdatedEvent.UpdateCause.SERVER_DATA_LOAD){
-            if (getInstance() !=null && getInstance().recipeManager != null) {
-                List<GunSmithTableRecipe> recipes = getInstance().recipeManager.getRecipes().stream()
-                        .map(RecipeHolder::value)
-                        .filter(recipe -> recipe.getType() == ModRecipe.GUN_SMITH_TABLE_CRAFTING.get())
-                        .map(recipe -> (GunSmithTableRecipe) recipe)
-                        .toList();
-                for (GunSmithTableRecipe recipe : recipes) {
+    public static void onReload(TagsUpdatedEvent.ServerDataLoad event) {
+        if (getInstance() != null) {
+            getInstance().recipeRegistries = event.getRegistries();
+        }
+    }
+
+    @SubscribeEvent
+    public static void onComponentsBound(DefaultDataComponentsBoundEvent event) {
+        if (event.getUpdateCause() != DefaultDataComponentsBoundEvent.UpdateCause.SERVER_DATA_LOAD
+                || getInstance() == null || getInstance().recipeRegistries == null) {
+            return;
+        }
+        HolderLookup.Provider registries = getInstance().recipeRegistries;
+        if (getInstance() != null && getInstance().recipeDataManager != null) {
+            getInstance().recipeDataManager.initializeRecipes(registries);
+        }
+        if (getInstance() != null && getInstance().recipeManager != null) {
+            List<GunSmithTableRecipe> recipes = getInstance().recipeManager.getRecipes().stream()
+                    .map(RecipeHolder::value)
+                    .filter(recipe -> recipe.getType() == ModRecipe.GUN_SMITH_TABLE_CRAFTING.get())
+                    .map(recipe -> (GunSmithTableRecipe) recipe)
+                    .toList();
+            for (GunSmithTableRecipe recipe : recipes) {
+                try {
                     recipe.init();
+                    ItemStackJsonHelper.resolvePaintingVariant(recipe.getOutput(), registries);
+                } catch (RuntimeException exception) {
+                    GunMod.LOGGER.error("Failed to initialize native gun smith table recipe {}", recipe.getId(), exception);
                 }
             }
         }

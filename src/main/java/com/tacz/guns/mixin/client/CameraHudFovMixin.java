@@ -2,6 +2,7 @@ package com.tacz.guns.mixin.client;
 
 import com.tacz.guns.client.event.CameraSetupEvent;
 import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,8 +17,8 @@ public class CameraHudFovMixin {
         cir.setReturnValue(CameraSetupEvent.computeWorldFov(cir.getReturnValue(), partialTicks));
     }
 
-    @Inject(method = "extractRenderState(Lnet/minecraft/client/renderer/state/level/CameraRenderState;F)V", at = @At("TAIL"), remap = false)
-    private void tacz$applyGunModelHudFov(CameraRenderState cameraState, float cameraEntityPartialTicks, CallbackInfo ci) {
-        cameraState.hudFov = CameraSetupEvent.computeGunModelHudFov(cameraState.hudFov, cameraEntityPartialTicks);
+    @Inject(method = "extractRenderState(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/DeltaTracker;)V", at = @At("TAIL"), remap = false)
+    private void tacz$applyGunModelHudFov(CameraRenderState cameraState, DeltaTracker deltaTracker, CallbackInfo ci) {
+        cameraState.hudFov = CameraSetupEvent.computeGunModelHudFov(cameraState.hudFov, cameraState.cameraEntityPartialTicks);
     }
 }

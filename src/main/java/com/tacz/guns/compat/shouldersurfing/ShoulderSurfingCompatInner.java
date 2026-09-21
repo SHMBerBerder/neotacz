@@ -1,6 +1,6 @@
 package com.tacz.guns.compat.shouldersurfing;
 
-import com.github.exopandora.shouldersurfing.api.model.Perspective;
+import com.github.exopandora.shouldersurfing.api.client.Perspective;
 import com.github.exopandora.shouldersurfing.client.InputHandler;
 
 public class ShoulderSurfingCompatInner {

@@ -19,7 +19,6 @@ import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -28,13 +27,13 @@ public class ReloadKey {
     public static final KeyMapping RELOAD_KEY = new KeyMapping("key.tacz.reload.desc",
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_R,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_R,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
     public static void onReloadPress(InputEvent.Key event) {
-        if (isInGame() && event.getAction() == GLFW.GLFW_PRESS && TaczKeyMappings.matches(RELOAD_KEY, event)) {
+        if (isInGame() && event.getAction() == InputConstants.PRESS && TaczKeyMappings.matches(RELOAD_KEY, event)) {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null || player.isSpectator()) {
                 return;

@@ -61,7 +61,7 @@ public final class GunPropertyDiagrams {
             int barPositivelyColor = 0xFF_55FF55;
             int barNegativeColor = 0xFF_FF5555;
 
-            int fontColor = 0xCCCCCC;
+            int fontColor = 0xFFCCCCCC;
             int nameTextStartX = x + 5;
             int valueTextStartX = x + 210;
             int valueTextRightX = x + PANEL_WIDTH - PANEL_PADDING;

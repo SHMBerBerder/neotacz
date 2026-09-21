@@ -7,6 +7,8 @@ import com.google.gson.reflect.TypeToken;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.api.modifier.JsonProperty;
 import com.tacz.guns.crafting.GunSmithTableRecipe;
+import com.tacz.guns.resource.serialize.ItemStackJsonHelper;
+import net.minecraft.core.HolderLookup;
 import com.tacz.guns.resource.CommonAssetsManager;
 import com.tacz.guns.resource.ICommonResourceProvider;
 import com.tacz.guns.resource.filter.RecipeFilter;
@@ -42,6 +44,7 @@ public enum CommonNetworkCache implements ICommonResourceProvider {
     public Map<Identifier, CommonAttachmentIndex> attachmentIndex = new HashMap<>();
     public Map<Identifier, CommonBlockIndex> blockIndex = new HashMap<>();
     public Map<Identifier, GunSmithTableRecipe> recipes = new HashMap<>();
+    private boolean recipeSnapshotReceived;
     public Map<Identifier, Set<String>> attachmentTags = new HashMap<>();
     public Map<Identifier, Set<String>> allowAttachmentTags = new HashMap<>();
 
@@ -135,6 +138,7 @@ public enum CommonNetworkCache implements ICommonResourceProvider {
     }
 
     public void clear() {
+        recipeSnapshotReceived = false;
         gunData.clear();
         attachmentData.clear();
         gunIndex.clear();
@@ -152,6 +156,7 @@ public enum CommonNetworkCache implements ICommonResourceProvider {
 
     public void fromNetwork(Map<DataType, Map<Identifier, String>> cache) {
         clear();
+        recipeSnapshotReceived = cache.containsKey(DataType.RECIPES);
         EnumSet<DataType> handled = EnumSet.noneOf(DataType.class);
 
         readNetworkType(cache, handled, DataType.GUN_DATA);
@@ -175,6 +180,23 @@ public enum CommonNetworkCache implements ICommonResourceProvider {
             }
             fromNetwork(entry.getKey(), entry.getValue());
         }
+    }
+
+    public boolean hasRecipeSnapshot() {
+        return recipeSnapshotReceived;
+    }
+
+    public void fromNetwork(Map<DataType, Map<Identifier, String>> cache, HolderLookup.Provider registries) {
+        fromNetwork(cache);
+        recipes.entrySet().removeIf(entry -> {
+            try {
+                ItemStackJsonHelper.resolvePaintingVariant(entry.getValue().getOutput(), registries);
+                return false;
+            } catch (RuntimeException exception) {
+                GunMod.LOGGER.warn("Failed to resolve recipe components for {}", entry.getKey(), exception);
+                return true;
+            }
+        });
     }
 
     private void readNetworkType(Map<DataType, Map<Identifier, String>> cache, EnumSet<DataType> handled, DataType type) {
@@ -251,6 +273,8 @@ public enum CommonNetworkCache implements ICommonResourceProvider {
 
     private GunSmithTableRecipe parseRecipe(Identifier id, String json) {
         TableRecipe tableRecipe = CommonAssetsManager.GSON.fromJson(json, TableRecipe.class);
-        return new GunSmithTableRecipe(id, tableRecipe);
+        GunSmithTableRecipe recipe = new GunSmithTableRecipe(id, tableRecipe);
+        recipe.init();
+        return recipe;
     }
 }

@@ -20,7 +20,6 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 
 import static com.tacz.guns.util.InputExtraCheck.isInGame;
 
@@ -29,20 +28,20 @@ public class InteractKey {
     public static final KeyMapping INTERACT_KEY = new KeyMapping("key.tacz.interact.desc",
             KeyConflictContext.IN_GAME,
             KeyModifier.NONE,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_O,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_O,
             TaczKeyMappings.CATEGORY);
 
     @SubscribeEvent
     public static void onInteractKeyPress(InputEvent.Key event) {
-        if (isInGame() && event.getAction() == GLFW.GLFW_PRESS && TaczKeyMappings.matches(INTERACT_KEY, event)) {
+        if (isInGame() && event.getAction() == InputConstants.PRESS && TaczKeyMappings.matches(INTERACT_KEY, event)) {
             doInteractLogic();
         }
     }
 
     @SubscribeEvent
     public static void onInteractMousePress(InputEvent.MouseButton.Post event) {
-        if (isInGame() && event.getAction() == GLFW.GLFW_PRESS && TaczKeyMappings.matchesMouse(INTERACT_KEY, event)) {
+        if (isInGame() && event.getAction() == InputConstants.PRESS && TaczKeyMappings.matchesMouse(INTERACT_KEY, event)) {
             doInteractLogic();
         }
     }

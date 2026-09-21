@@ -2,7 +2,7 @@ package com.tacz.guns.client.model.gltf.quality;
 
 import com.electronwill.nightconfig.core.CommentedConfig;
 import com.tacz.guns.config.client.VideoConfig;
-import net.neoforged.fml.config.LoadedConfigFixture;
+import com.tacz.guns.testsupport.LoadedConfigFixture;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.junit.jupiter.api.Test;
 

@@ -39,7 +39,7 @@ public class AttachmentQueryCategory implements IRecipeCategory<AttachmentQueryE
         List<ItemStack> extraAllowGunStacks = entry.getExtraAllowGunStacks();
         if (!extraAllowGunStacks.isEmpty()) {
             Font font = Minecraft.getInstance().font;
-            guiGraphics.text(font, Component.translatable("jei.tacz.attachment_query.more"), 128, 134, 0x555555, false);
+            guiGraphics.text(font, Component.translatable("jei.tacz.attachment_query.more"), 128, 134, 0xFF555555, false);
         }
     }
 

@@ -1,7 +1,7 @@
 package com.tacz.guns.compat.cloth.widget;
 
+import com.mojang.blaze3d.Blaze3D;
 import me.shedaniel.clothconfig2.api.AbstractConfigListEntry;
-import net.minecraft.util.Util;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -15,7 +15,7 @@ import java.util.Optional;
 
 public class OpenGunPackDirEntry extends AbstractConfigListEntry<Boolean> {
     private final Button button = Button.builder(Component.translatable("config.tacz.open_gunpack_folder"), button -> {
-        Util.getPlatform().openUri(FMLPaths.GAMEDIR.get().resolve("tacz").toUri());
+        Blaze3D.openPath(FMLPaths.GAMEDIR.get().resolve("tacz"));
         button.setFocused(false);
     }).bounds(0, 0, 150, 20).build();
 

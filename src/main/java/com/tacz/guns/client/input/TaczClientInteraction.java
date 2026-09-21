@@ -6,6 +6,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -25,10 +26,12 @@ public final class TaczClientInteraction {
         }
 
         for (InteractionHand hand : InteractionHand.values()) {
+            // Keep the pre-interaction animation even if using the item replaces it.
+            SwingAnimation swingAnimation = mc.player.getItemInHand(hand).getInteractAnimation();
             var inputEvent = ClientHooks.onClickInput(1, mc.options.keyUse, hand);
             if (inputEvent.isCanceled()) {
                 if (inputEvent.shouldSwingHand()) {
-                    mc.player.swing(hand);
+                    mc.player.swing(hand, swingAnimation, false);
                 }
                 return;
             }
@@ -48,7 +51,7 @@ public final class TaczClientInteraction {
                         }
                         if (mc.player.isWithinEntityInteractionRange(entity, 0.0)
                                 && mc.gameMode.interact(mc.player, entity, entityHit, hand) instanceof InteractionResult.Success success) {
-                            swingIfClient(mc, hand, inputEvent.shouldSwingHand(), success);
+                            swingIfPredicted(mc, hand, swingAnimation, inputEvent.shouldSwingHand(), success);
                             return;
                         }
                     }
@@ -57,10 +60,10 @@ public final class TaczClientInteraction {
                         int oldCount = heldItem.getCount();
                         InteractionResult useResult = mc.gameMode.useItemOn(mc.player, hand, blockHit);
                         if (useResult instanceof InteractionResult.Success success) {
-                            if (success.swingSource() == InteractionResult.SwingSource.CLIENT && inputEvent.shouldSwingHand()) {
-                                mc.player.swing(hand);
+                            if (success.swingSource() == InteractionResult.SwingSource.PREDICTED && inputEvent.shouldSwingHand()) {
+                                mc.player.swing(hand, swingAnimation, false);
                                 if (!heldItem.isEmpty() && (heldItem.getCount() != oldCount || mc.player.hasInfiniteMaterials())) {
-                                    mc.gameRenderer.itemInHandRenderer.itemUsed(hand);
+                                    mc.player.itemUsed(hand);
                                 }
                             }
                             return;
@@ -79,16 +82,17 @@ public final class TaczClientInteraction {
             }
 
             if (!heldItem.isEmpty() && mc.gameMode.useItem(mc.player, hand) instanceof InteractionResult.Success success) {
-                swingIfClient(mc, hand, inputEvent.shouldSwingHand(), success);
-                mc.gameRenderer.itemInHandRenderer.itemUsed(hand);
+                swingIfPredicted(mc, hand, swingAnimation, inputEvent.shouldSwingHand(), success);
+                mc.player.itemUsed(hand);
                 return;
             }
         }
     }
 
-    private static void swingIfClient(Minecraft mc, InteractionHand hand, boolean shouldSwingHand, InteractionResult.Success success) {
-        if (success.swingSource() == InteractionResult.SwingSource.CLIENT && shouldSwingHand) {
-            mc.player.swing(hand);
+    private static void swingIfPredicted(Minecraft mc, InteractionHand hand, SwingAnimation swingAnimation,
+                                         boolean shouldSwingHand, InteractionResult.Success success) {
+        if (success.swingSource() == InteractionResult.SwingSource.PREDICTED && shouldSwingHand) {
+            mc.player.swing(hand, swingAnimation, false);
         }
     }
 }

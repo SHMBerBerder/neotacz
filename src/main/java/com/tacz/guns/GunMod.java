@@ -8,6 +8,7 @@ import com.tacz.guns.init.*;
 import com.tacz.guns.init.ModContainer;
 import com.tacz.guns.resource.GunPackLoader;
 import com.tacz.guns.resource.modifier.AttachmentPropertyManager;
+import com.tacz.guns.resource.pojo.data.loot.LegacyLootNumberProviders;
 import net.minecraft.server.packs.PackType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -44,6 +45,8 @@ public class GunMod {
         ModRecipe.RECIPE_SERIALIZERS.register(bus);
         ModRecipe.RECIPE_TYPES.register(bus);
         ModLootModifiers.LOOT_MODIFIER_SERIALIZERS.register(bus);
+        LegacyLootNumberProviders.INTS.register(bus);
+        LegacyLootNumberProviders.FLOATS.register(bus);
         ModContainer.CONTAINER_TYPE.register(bus);
         ModSounds.SOUNDS.register(bus);
         ModParticles.PARTICLE_TYPES.register(bus);

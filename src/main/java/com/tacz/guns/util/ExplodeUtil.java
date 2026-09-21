@@ -47,7 +47,8 @@ public class ExplodeUtil {
                     Optional.ofNullable(explosion.getHitPlayers().get(player)),
                     radius >= 2.0F ? ParticleTypes.EXPLOSION_EMITTER : ParticleTypes.EXPLOSION,
                     SoundEvents.GENERIC_EXPLODE,
-                    WeightedList.of(new ExplosionParticleInfo(ParticleTypes.POOF, 1.0F, 1.0F))
+                    WeightedList.of(new ExplosionParticleInfo(ParticleTypes.POOF, 1.0F, 1.0F)),
+                    true
             );
             player.connection.send(packet);
         });
