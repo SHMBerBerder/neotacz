@@ -24,7 +24,8 @@
     "client.MultiPlayerGameModeAccessor",
     "client.PlayerModelMixin",
     "client.PlayerAnimatorPlayerMixin",
-    "client.SoundManagerPreparationsMixin"
+    "client.SoundManagerPreparationsMixin",
+    "client.VulkanRenderPipelineMixin"
   ],
   "injectors": {
     "defaultRequire": 1
