@@ -370,10 +370,10 @@ public class BedrockGunModel extends BedrockAnimatedModel {
                 .map(ClientAttachmentIndex::usesMeshRenderModel).orElse(false);
         ScopeRenderDebug.path("gun_model_render_to_buffer", attachmentItem, currentGunItem, transformType,
                 "collecting=" + collectingDeferredRenderers + ",mounted=" + hasMountedScope + ",scopePos=" + (scopePosPath != null));
-        // Mesh scope appearance is independent of the semantic pass. A mesh gun uses an
-        // attachment-only optical pass, which does not stencil-clip the custom gun body.
+        // Rejected custom scope plans retain the attachment-only optical path. An accepted
+        // plan owns its optics and body together, so it must not submit a second local pass.
         if (collectingDeferredRenderers && hasMountedScope
-                && (!transformType.firstPerson() || hasCustomBodyRenderer() || meshScope)) {
+                && (!transformType.firstPerson() || (hasCustomBodyRenderer() && extras == null) || meshScope)) {
             matrixStack.pushPose();
             try {
                 for (BedrockPart bedrockPart : scopePosPath) {
@@ -441,7 +441,9 @@ public class BedrockGunModel extends BedrockAnimatedModel {
                                         Identifier gunTexture, int light, int overlay, int order,
                                         @Nullable FirstPersonHandSway handSway, boolean renderHandForCallback,
                                         boolean preserveProvidedRenderTypes, Consumer<Runnable> gunFrameState) {
-        if (!transformType.firstPerson() || hasCustomBodyRenderer()) return null;
+        if (!transformType.firstPerson()) return null;
+        GunBodyRenderer customRenderer = getBodyRenderer();
+        if (customRenderer != null && !customRenderer.isAvailable()) return null;
         ItemStack attachmentItem = currentAttachmentItem.get(AttachmentType.SCOPE);
         IAttachment iAttachment = IAttachment.getIAttachmentOrNull(attachmentItem);
         if (scopePosPath == null || attachmentItem == null || attachmentItem.isEmpty() || iAttachment == null) {
@@ -453,6 +455,8 @@ public class BedrockGunModel extends BedrockAnimatedModel {
         }
         ClientAttachmentIndex attachmentIndex = attachmentIndexOptional.get();
         boolean meshAppearance = attachmentIndex.usesMeshRenderModel();
+        // Mesh attachment appearance has its own early/OIT route, not this ordered solid pass.
+        if (customRenderer != null && meshAppearance) return null;
         if (meshAppearance && attachmentIndex.getMeshRenderer() == null) return null;
         BedrockAttachmentModel attachmentModel = attachmentIndex.getAttachmentModel();
         Identifier attachmentTexture = attachmentIndex.getModelTexture();
@@ -480,6 +484,10 @@ public class BedrockGunModel extends BedrockAnimatedModel {
         }
 
         PoseStack gunPose = copyPose(matrixStack);
+        GunBodyRenderer.PreparedScopeBody customBody = customRenderer == null ? null
+                : prepareCustomScopeBody(customRenderer, gunFrameState, handSway, gunPose, gunItem,
+                        transformType, light, overlay);
+        if (customRenderer != null && customBody == null) return null;
         Consumer<Runnable> attachmentFrameState = attachmentModel.captureRenderState();
 
         var scopeSubmit = new ScopeStencilFeatureRenderer.ScopeSubmit(
@@ -502,9 +510,30 @@ public class BedrockGunModel extends BedrockAnimatedModel {
                 light,
                 overlay,
                 preserveProvidedRenderTypes,
-                new ScopeRenderExtras(collector, action -> gunFrameState.accept(() -> attachmentFrameState.accept(action)))
+                new ScopeRenderExtras(collector, action -> gunFrameState.accept(() -> attachmentFrameState.accept(action))),
+                customBody
         );
         return new ScopePass(collection, scopeSubmit);
+    }
+
+    @Nullable
+    private GunBodyRenderer.PreparedScopeBody prepareCustomScopeBody(GunBodyRenderer renderer,
+            Consumer<Runnable> frameState, @Nullable FirstPersonHandSway sway, PoseStack pose, ItemStack gun,
+            ItemDisplayContext context, int light, int overlay) {
+        try {
+            GunBodyRenderer.PreparedScopeBody[] captured = {null};
+            Runnable prepare = () -> captured[0] = renderer.prepareScopeBody(this, copyPose(pose), gun,
+                    context, light, overlay);
+            frameState.accept(() -> {
+                if (sway == null) prepare.run();
+                else sway.withTemporaryModelSway(getRootNode(), prepare);
+            });
+            return captured[0] != null && captured[0].isAvailable() ? captured[0] : null;
+        } catch (RuntimeException exception) {
+            bodyRenderer.compareAndSet(renderer, null);
+            GunMod.LOGGER.warn("Disabling failed custom gun body scope preparation; declared mesh displays remain unavailable", exception);
+            return null;
+        }
     }
 
     private record ScopePass(SubmitNodeCollection collection, ScopeStencilFeatureRenderer.ScopeSubmit submit) {

@@ -2,6 +2,7 @@ package com.tacz.guns.client.model.gltf.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.GunMod;
 import com.tacz.guns.client.model.BedrockGunModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
@@ -49,6 +50,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
+import java.util.function.Function;
 
 /**
  * Optional glTF gun-body adapter. Construction is CPU-only; immutable geometry snapshots, texture
@@ -303,6 +305,58 @@ public final class GltfGunBodyRenderer implements GunBodyRenderer {
         poseStack.scale(-scale, -scale, scale);
     }
 
+    @Override
+    @Nullable
+    public PreparedScopeBody prepareScopeBody(BedrockGunModel rig, PoseStack pose, ItemStack gun,
+                                              ItemDisplayContext context, int light, int overlay) {
+        if (!context.firstPerson() || !isAvailable() || !supportsScopeStencil(asset)
+                || rig.getRootNode() == null || (mappedRig != null && mappedRig != rig)) return null;
+        RenderSystem.assertOnRenderThread();
+        PreparedFrame frame = preparedFrameAtTime(currentAnimationTime());
+        if (frame.primitives().isEmpty() && !frame.allHidden()) return null;
+        pose.pushPose();
+        try {
+            applyBedrockRootTransform(rig.getRootNode(), pose);
+            pose.scale(-scale, -scale, scale);
+            List<Submission> submissions = frame.primitives().isEmpty() ? List.of() : resolveSubmissions(frame, pose);
+            return isAvailable() ? snapshotScopeBody(submissions, pose, light, overlay, manager, generation) : null;
+        } finally {
+            pose.popPose();
+        }
+    }
+
+    static boolean supportsScopeStencil(ConvertedGltfAsset asset) {
+        // Include hidden selected primitives, not unused materials: visibility must not switch
+        // between solid scope replay and native OIT halfway through an animation.
+        for (int mesh : asset.selectedMeshIndices()) {
+            for (GltfRenderPrimitive primitive : asset.renderMeshes().get(mesh).primitives()) {
+                int material = primitive.materialIndex();
+                if (material >= 0 && asset.materials().get(material).alphaMode() == GltfAlphaMode.BLEND) return false;
+            }
+        }
+        return true;
+    }
+
+    static PreparedScopeBody snapshotScopeBody(List<Submission> submissions, PoseStack pose, int light, int overlay,
+                                               GltfModelManager manager, long generation) {
+        List<Submission> captured = List.copyOf(submissions);
+        PoseStack capturedPose = new PoseStack();
+        capturedPose.last().pose().set(pose.last().pose());
+        capturedPose.last().normal().set(pose.last().normal());
+        return new PreparedScopeBody() {
+            @Override
+            public boolean isAvailable() { return manager.getGeneration() == generation; }
+
+            @Override
+            public void emit(Function<RenderType, VertexConsumer> buffers) {
+                if (!isAvailable()) return;
+                for (Submission submission : captured) {
+                    submission.geometry().emit(capturedPose.last(), buffers.apply(submission.renderType()), light, overlay);
+                }
+            }
+        };
+    }
+
     private boolean submitPreparedFrame(PreparedFrame frame, PoseStack poseStack,
                                         OrderedSubmitNodeCollector collector, int light, int overlay) {
         List<PreparedPrimitive> prepared = frame.primitives();
@@ -312,12 +366,25 @@ public final class GltfGunBodyRenderer implements GunBodyRenderer {
             return frame.allHidden() && manager.getGeneration() == generation;
         }
 
+        List<Submission> submissions = resolveSubmissions(frame, poseStack);
+        if (manager.getGeneration() != generation) {
+            return false;
+        }
+        for (Submission submission : submissions) {
+            GltfPreparedGeometry geometry = submission.geometry();
+            com.tacz.guns.util.RenderHelper.submitCustomGeometry(collector, poseStack, submission.renderType(), (pose, buffer) ->
+                    geometry.emit(pose, buffer, light, overlay));
+        }
+        return true;
+    }
+
+    private List<Submission> resolveSubmissions(PreparedFrame frame, PoseStack poseStack) {
         // Resolve every texture and RenderType before the first node is queued. A later failure can
         // therefore never leave a half-submitted glTF body in the retained collector.
         GltfPbrDynamicTextureCache dynamicTextures = textureCache();
         Map<Integer, ResolvedMaterial> resolvedMaterials = new HashMap<>();
-        List<Submission> submissions = new ArrayList<>(prepared.size());
-        for (PreparedPrimitive primitive : prepared) {
+        List<Submission> submissions = new ArrayList<>(frame.primitives().size());
+        for (PreparedPrimitive primitive : frame.primitives()) {
             int materialIndex = primitive.materialIndex();
             ResolvedMaterial resolved = resolvedMaterials.computeIfAbsent(
                     materialIndex,
@@ -333,16 +400,7 @@ public final class GltfGunBodyRenderer implements GunBodyRenderer {
         }
 
         Matrix4f modelView = captureSortModelView(RenderSystem.getModelViewStack(), poseStack.last().pose());
-        submissions = sortSubmissions(submissions, modelView);
-        if (manager.getGeneration() != generation) {
-            return false;
-        }
-        for (Submission submission : submissions) {
-            GltfPreparedGeometry geometry = submission.geometry();
-            com.tacz.guns.util.RenderHelper.submitCustomGeometry(collector, poseStack, submission.renderType(), (pose, buffer) ->
-                    geometry.emit(pose, buffer, light, overlay));
-        }
-        return true;
+        return sortSubmissions(submissions, modelView);
     }
 
     /** Releases dynamic glTF textures. Off-thread reload hooks are marshalled to the client thread. */
@@ -869,7 +927,7 @@ public final class GltfGunBodyRenderer implements GunBodyRenderer {
     private record ResolvedMaterial(RenderType renderType, GltfPbrAlphaMode alphaMode) {
     }
 
-    private record Submission(
+    record Submission(
             int sequence,
             GltfPreparedGeometry geometry,
             RenderType renderType,

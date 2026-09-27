@@ -9,6 +9,7 @@ import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.pipeline.CompareOp;
 import com.tacz.guns.client.debug.ScopeRenderDebug;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
+import com.tacz.guns.client.model.gltf.render.GunBodyRenderer;
 import com.tacz.guns.client.renderer.item.FirstPersonHandSway;
 import com.tacz.guns.client.renderer.item.FirstPersonArmSubmitter;
 import com.tacz.guns.util.RenderHelper;
@@ -103,7 +104,12 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
     public void prepareGroup(FeatureFrameContext context, List<ScopeSubmit> submits, boolean strictlyOrdered) {
         Group group = new Group(context.stagedVertexBuffer(), context.font());
         for (ScopeSubmit submit : submits) {
-            buildSubmit(group, submit);
+            group.currentBody = submit.customBody;
+            try {
+                buildSubmit(group, submit);
+            } finally {
+                group.currentBody = null;
+            }
         }
         for (DrawStage stage : group.stages) {
             if (stage.draw != null) {
@@ -125,7 +131,9 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             for (DrawStage stage : group.stages) {
                 switch (stage.control) {
                     case CLEAR_STENCIL -> clearStencil(renderPass);
-                    case DRAW -> drawStage(context, stage, renderPass);
+                    case DRAW -> {
+                        if (stage.owner == null || stage.owner.isAvailable()) drawStage(context, stage, renderPass);
+                    }
                 }
             }
         } finally {
@@ -159,6 +167,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
     }
 
     private static void buildSubmit(Group group, ScopeSubmit submit) {
+        if (!submit.isAvailable()) return;
         if (submit.extras != null) {
             submit.extras.withFrameState(() -> buildSubmitFromFrame(group, submit));
         } else {
@@ -423,6 +432,13 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             case "greater127" -> "GL_GREATER:127";
             default -> "none";
         };
+        if (submit.customBody != null) {
+            stage("gun_body_pbr", submit, false, aimingProgress, apertureRadius, stencilFunc, "GL_KEEP",
+                    ORDER_GUN_BODY, null, -1, -1, "gun_body", gunClipMode, true, "");
+            submit.customBody.emit(original -> gunClipMode.equals("none") ? group.vertexBuilder(original)
+                    : group.vertexBuilder(original, renderType, true));
+            return;
+        }
         stage("gun_body", submit, false, aimingProgress, apertureRadius, stencilFunc, "GL_KEEP",
                 ORDER_GUN_BODY, renderType, -1, -1, "gun_body", gunClipMode, true, "");
         VertexConsumer buffer = submit.preserveProvidedRenderTypes && renderType != submit.gunRenderType
@@ -614,6 +630,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
         private final StagedVertexBuffer stagedBuffer;
         private final Font font;
         private final List<DrawStage> stages = new ArrayList<>();
+        @Nullable private GunBodyRenderer.PreparedScopeBody currentBody;
 
         private Group(StagedVertexBuffer stagedBuffer, Font font) {
             this.stagedBuffer = stagedBuffer;
@@ -624,7 +641,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             PreparedRenderType preparedRenderType = renderType.prepare();
             VertexSorting sorting = renderType.sortOnUpload() ? RenderSystem.getProjectionType().vertexSorting() : null;
             StagedVertexBuffer.Draw draw = stagedBuffer.appendDraw(renderType.format(), renderType.primitiveTopology(), sorting);
-            stages.add(new DrawStage(preparedRenderType, draw, Control.DRAW));
+            stages.add(new DrawStage(preparedRenderType, draw, Control.DRAW, currentBody));
             return stagedBuffer.getVertexBuilder(draw);
         }
 
@@ -633,7 +650,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
                     original.prepare(), stencilTemplate.pipeline(), preserveDepth);
             VertexSorting sorting = original.sortOnUpload() ? RenderSystem.getProjectionType().vertexSorting() : null;
             StagedVertexBuffer.Draw draw = stagedBuffer.appendDraw(original.format(), original.primitiveTopology(), sorting);
-            stages.add(new DrawStage(prepared, draw, Control.DRAW));
+            stages.add(new DrawStage(prepared, draw, Control.DRAW, currentBody));
             return stagedBuffer.getVertexBuilder(draw);
         }
 
@@ -642,12 +659,13 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             PreparedRenderType preparedRenderType = renderType.prepare();
             VertexSorting sorting = renderType.sortOnUpload() ? RenderSystem.getProjectionType().vertexSorting() : null;
             StagedVertexBuffer.Draw draw = stagedBuffer.appendDraw(renderType.format(), renderType.primitiveTopology(), sorting);
-            stages.add(new DrawStage(preparedRenderType, draw, Control.DRAW));
+            stages.add(new DrawStage(preparedRenderType, draw, Control.DRAW, currentBody));
             return new StagedBuilder(stagedBuffer.getVertexBuilder(draw), modelView);
         }
 
         private void control(Control control) {
-            stages.add(new DrawStage(null, null, control));
+            // Clears are never gated by a retired body, including retirement after staging.
+            stages.add(new DrawStage(null, null, control, null));
         }
 
         private record StagedBuilder(VertexConsumer buffer, Matrix4f modelView) {
@@ -719,7 +737,8 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
 
     private record DrawStage(@Nullable PreparedRenderType renderType,
                              @Nullable StagedVertexBuffer.Draw draw,
-                             Control control) {
+                             Control control,
+                             @Nullable GunBodyRenderer.PreparedScopeBody owner) {
     }
 
     private enum Control {
@@ -746,7 +765,20 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
                               int light,
                               int overlay,
                               boolean preserveProvidedRenderTypes,
-                              @Nullable ScopeRenderExtras extras) implements SubmitNode {
+                              @Nullable ScopeRenderExtras extras,
+                              @Nullable GunBodyRenderer.PreparedScopeBody customBody) implements SubmitNode {
+        public ScopeSubmit(@Nullable BedrockGunModel gunModel, BedrockAttachmentModel attachmentModel,
+                           @Nullable AbstractClientPlayer player, ItemStack gunItem, @Nullable ItemStack attachmentItem,
+                           ItemDisplayContext transformType, RenderType gunRenderType, RenderType attachmentRenderType,
+                           Identifier gunTexture, Identifier attachmentTexture, Matrix4f gunPose, Matrix3f gunNormal,
+                           @Nullable FirstPersonHandSway handSway, boolean renderHand, boolean meshAppearance,
+                           int activeScopeViewIndex, int light, int overlay, boolean preserveProvidedRenderTypes,
+                           @Nullable ScopeRenderExtras extras) {
+            this(gunModel, attachmentModel, player, gunItem, attachmentItem, transformType, gunRenderType,
+                    attachmentRenderType, gunTexture, attachmentTexture, gunPose, gunNormal, handSway,
+                    renderHand, meshAppearance, activeScopeViewIndex, light, overlay, preserveProvidedRenderTypes, extras, null);
+        }
+
         public ScopeSubmit(@Nullable BedrockGunModel gunModel, BedrockAttachmentModel attachmentModel,
                            @Nullable AbstractClientPlayer player, ItemStack gunItem, @Nullable ItemStack attachmentItem,
                            ItemDisplayContext transformType, RenderType gunRenderType, RenderType attachmentRenderType,
@@ -775,7 +807,7 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
         }
 
         void submitIntegratedSemantics(SubmitNodeCollector collector) {
-            if (gunModel == null || meshAppearance) {
+            if (gunModel == null || meshAppearance || !isAvailable()) {
                 return;
             }
             Runnable submit = () -> RenderHelper.withSubmitNodeCollector(collector, () ->
@@ -787,6 +819,10 @@ public final class ScopeStencilFeatureRenderer implements FeatureRenderer<ScopeS
             };
             if (extras == null) withSway.run();
             else extras.withFrameState(withSway);
+        }
+
+        boolean isAvailable() {
+            return customBody == null || customBody.isAvailable();
         }
 
         private PoseStack toGunPoseStack() {

@@ -9,6 +9,9 @@ import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.ShaderType;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.ScissorState;
+import com.tacz.guns.client.model.gltf.render.GltfPbrAlphaMode;
+import com.tacz.guns.client.model.gltf.render.GltfPbrMaterial;
+import com.tacz.guns.client.model.gltf.render.GltfPbrRenderTypes;
 import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.PreparedRenderType;
@@ -122,6 +125,54 @@ class ScopeStencilRenderTypesTest {
         assertEquals(CompareOp.ALWAYS_PASS, result.getDepthStencilState().depthTest());
         assertFalse(result.getDepthStencilState().writeDepth());
         assertEquals(original.getColorTargetStates(), result.getColorTargetStates());
+    }
+
+    @Test
+    void actualPbrOrdinaryPipelinesPreserveMaterialAndDepthWhenAddingScopeClipping() {
+        var templates = List.of(ScopeStencilRenderTypes.entityEqual0(TEXTURE).pipeline(),
+                ScopeStencilRenderTypes.entityGreater127(TEXTURE).pipeline());
+        try {
+            for (GltfPbrAlphaMode alpha : GltfPbrAlphaMode.values()) {
+                for (boolean cull : new boolean[]{false, true}) {
+                    var material = new GltfPbrMaterial(null, null, null, null, null,
+                            null, null, null, alpha, cull);
+                    var original = GltfPbrRenderTypes.renderType(material).pipeline();
+                    var scissor = new ScissorState();
+                    scissor.enable(3, 4, 50, 60);
+                    var textures = List.<PreparedRenderType.Texture>of();
+                    // BLEND exercises only ordinary pipeline conversion, not OIT scope admission.
+                    var prepared = new PreparedRenderType("pbr_scope", original, null, null, scissor, textures);
+                    for (RenderPipeline template : templates) {
+                        String variant = alpha + ":cull=" + cull + ":" + template.getLocation();
+                        var converted = ScopeStencilRenderTypes.withLegacyStencil(prepared, template, true);
+                        var result = converted.pipeline();
+                        assertEquals(original.getShaders(), result.getShaders(), variant);
+                        assertEquals(original.getShaderDefines(), result.getShaderDefines(), variant);
+                        assertTrue(result.getShaderDefines().flags().contains("GLTF_ALPHA_" + alpha.name()), variant);
+                        assertEquals(uniformDefinitions(original), uniformDefinitions(result), variant);
+                        assertEquals(original.getVertexFormatBindings(), result.getVertexFormatBindings(), variant);
+                        assertEquals(original.getPrimitiveTopology(), result.getPrimitiveTopology(), variant);
+                        assertEquals(cull, result.isCull(), variant);
+                        assertEquals(original.getColorTargetStates(), result.getColorTargetStates(), variant);
+                        var originalDepth = original.getDepthStencilState();
+                        var resultDepth = result.getDepthStencilState();
+                        assertNotNull(originalDepth, variant);
+                        assertNotNull(resultDepth, variant);
+                        assertEquals(originalDepth.depthTest(), resultDepth.depthTest(), variant);
+                        assertEquals(originalDepth.writeDepth(), resultDepth.writeDepth(), variant);
+                        assertEquals(originalDepth.depthBiasScaleFactor(), resultDepth.depthBiasScaleFactor(), variant);
+                        assertEquals(originalDepth.depthBiasConstant(), resultDepth.depthBiasConstant(), variant);
+                        assertEquals(template.getDepthStencilState().stencilTest(), resultDepth.stencilTest(), variant);
+                        assertSame(scissor, converted.scissorState(), variant);
+                        assertSame(textures, converted.textures(), variant);
+                        assertSame(prepared.dynamicTransforms(), converted.dynamicTransforms(), variant);
+                        assertNull(converted.oitPipelineSet(), variant);
+                    }
+                }
+            }
+        } finally {
+            GltfPbrRenderTypes.clearCache();
+        }
     }
 
     @Test
